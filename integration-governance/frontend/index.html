@@ -959,7 +959,7 @@
                 setStatus(settingsStatus, "Sincronizando CPI...");
                 await api("/integrations/sync-cpi", {
                     method: "POST",
-                    body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 20 })
+                    body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 100 })
                 });
                 setStatus(settingsStatus, "Credenciais salvas e CPI sincronizado.");
                 showSection("dashboard");
@@ -976,7 +976,7 @@
                 setStatus(statusText, "Sincronizando CPI...");
                 await api("/integrations/sync-cpi", {
                     method: "POST",
-                    body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 20 })
+                    body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 100 })
                 });
                 await loadDashboard();
                 setStatus(statusText, "Sincronização concluída.");

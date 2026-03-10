@@ -110,6 +110,62 @@ class TestCPIConnector:
         assert artifacts[0]["symbolicName"] == "flow_a"
         assert artifacts[0]["deployed"] is True
 
+    def test_get_recent_message_processing_logs_ignores_processing_and_paginates(self, connector):
+        first_page = {
+            "d": {
+                "results": [
+                    {
+                        "MessageGuid": "m-1",
+                        "Status": "PROCESSING",
+                        "LogStart": None,
+                        "LogEnd": None,
+                        "IntegrationFlowName": None,
+                        "IntegrationArtifact": {"Id": None, "Name": None},
+                    },
+                    {
+                        "MessageGuid": "m-2",
+                        "Status": "COMPLETED",
+                        "LogStart": "/Date(1000)/",
+                        "LogEnd": "/Date(2000)/",
+                        "IntegrationFlowName": "flow_a",
+                        "IntegrationArtifact": {"Id": "flow_a", "Name": "Flow A"},
+                    },
+                ],
+                "__next": "MessageProcessingLogs?%24top=5000&$skiptoken=1000&$top=4000",
+            }
+        }
+        second_page = {
+            "d": {
+                "results": [
+                    {
+                        "MessageGuid": "m-3",
+                        "Status": "FAILED",
+                        "LogStart": "/Date(3000)/",
+                        "LogEnd": "/Date(5000)/",
+                        "IntegrationFlowName": "flow_b",
+                        "IntegrationArtifact": {"Id": "flow_b", "Name": "Flow B"},
+                    }
+                ]
+            }
+        }
+
+        with patch("requests.Session.get") as mock_get:
+            mock_response_1 = Mock()
+            mock_response_1.json.return_value = first_page
+            mock_response_1.raise_for_status.return_value = None
+            mock_response_2 = Mock()
+            mock_response_2.json.return_value = second_page
+            mock_response_2.raise_for_status.return_value = None
+            mock_get.side_effect = [mock_response_1, mock_response_2]
+
+            logs = connector.get_recent_message_processing_logs(limit=5000)
+
+        assert len(logs) == 2
+        assert logs[0]["artifact_id"] == "flow_a"
+        assert logs[0]["processing_time"] == 1.0
+        assert logs[1]["artifact_name"] == "Flow B"
+        assert logs[1]["status"] == "FAILED"
+
 
 class TestConvertCPIToIntegration:
     """Testes para conversão de artifact CPI para Integration GDEP"""

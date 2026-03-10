@@ -5,12 +5,13 @@ Este módulo fornece funcionalidade para conectar ao SAP CPI e extrair informaç
 sobre integrações, endpoints, artefatos e métricas de desempenho.
 """
 
-import requests
 import logging
-from typing import Dict, List, Optional
-from urllib.parse import parse_qs, urljoin, urlparse
 import base64
 from collections import defaultdict
+from typing import Dict, List, Optional
+from urllib.parse import parse_qs, urljoin, urlparse
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +216,11 @@ class CPIConnector:
         try:
             url = urljoin(self.base_url, "/api/v1/MessageProcessingLogs")
             messages = []
-            params = {"$top": min(limit, 1000), "$format": "json"}
+            params = {
+                "$top": max(limit, 1),
+                "$format": "json",
+                "$filter": "Status ne 'PROCESSING'",
+            }
 
             while True:
                 response = self.session.get(url, params=params, verify=self.verify_ssl, timeout=30)
@@ -224,15 +229,22 @@ class CPIConnector:
                 data = response.json()
                 results = data.get("d", {}).get("results", [])
                 for msg in results:
+                    artifact = msg.get("IntegrationArtifact") or {}
+                    artifact_id = artifact.get("Id")
+                    artifact_name = artifact.get("Name")
+                    integration_flow_name = msg.get("IntegrationFlowName")
+                    if not any([artifact_id, artifact_name, integration_flow_name]):
+                        continue
+
                     start = parse_odata_datetime(msg.get("LogStart"))
                     end = parse_odata_datetime(msg.get("LogEnd"))
                     processing_time = ((end - start) / 1000.0) if start and end and end >= start else None
                     messages.append(
                         {
                             "id": msg.get("MessageGuid"),
-                            "artifact_id": (msg.get("IntegrationArtifact") or {}).get("Id"),
-                            "artifact_name": (msg.get("IntegrationArtifact") or {}).get("Name"),
-                            "integration_flow_name": msg.get("IntegrationFlowName"),
+                            "artifact_id": artifact_id,
+                            "artifact_name": artifact_name,
+                            "integration_flow_name": integration_flow_name,
                             "timestamp": msg.get("LogEnd") or msg.get("LogStart"),
                             "status": msg.get("Status"),
                             "error": msg.get("Status") == "FAILED",

@@ -53,7 +53,7 @@ class CPISettingsResponse(BaseModel):
 class SyncCPIRequest(BaseModel):
     reset: bool = False
     include_mpl: bool = True
-    message_limit: int = Field(default=20, ge=1, le=100)
+    message_limit: int = Field(default=100, ge=1, le=100)
 
 
 class IntegrationBase(BaseModel):

@@ -10,7 +10,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.collector import calculate_score, classify
-from backend.cpi_connector import CPIConnector, calculate_metrics, convert_cpi_to_integration
+from backend.cpi_connector import CPIConnector, convert_cpi_to_integration
 from backend.database import Base, SessionLocal, engine, sync_schema
 from backend.models import Integration, User, UserSession
 from backend.schemas import (
@@ -133,6 +133,33 @@ def build_summary(query):
         total_error_count=int(total_error_count),
         criticality_distribution=distribution,
     )
+
+
+def deduplicate_cpi_integrations(db: Session, user_id: int):
+    duplicate_external_ids = (
+        db.query(Integration.external_id)
+        .filter(
+            Integration.user_id == user_id,
+            Integration.external_source == "CPI",
+            Integration.external_id.isnot(None),
+        )
+        .group_by(Integration.external_id)
+        .having(func.count(Integration.id) > 1)
+        .all()
+    )
+    for (external_id,) in duplicate_external_ids:
+        duplicates = (
+            db.query(Integration)
+            .filter(
+                Integration.user_id == user_id,
+                Integration.external_source == "CPI",
+                Integration.external_id == external_id,
+            )
+            .order_by(Integration.id.desc())
+            .all()
+        )
+        for duplicate in duplicates[1:]:
+            db.delete(duplicate)
 
 
 @app.get("/health")
@@ -388,25 +415,35 @@ def sync_cpi_integrations(
     if not connector.health_check():
         raise HTTPException(status_code=401, detail="Falha na autenticação CPI. Verifique as credenciais salvas.")
 
-    if payload.reset:
-        db.query(Integration).filter(
-            Integration.user_id == current_user.id,
-            Integration.external_source == "CPI",
-        ).delete()
-        db.commit()
-
     artifacts = connector.get_integration_artifacts()
     metrics_by_artifact = connector.get_metrics_by_artifact(
         limit=max(payload.message_limit * 100, 2000)
     ) if payload.include_mpl else {}
     total_synced = 0
+    seen_external_ids = set()
 
     for index, artifact in enumerate(artifacts, start=1):
-        endpoints = connector.get_integration_endpoints(artifact["id"])
-        metrics = metrics_by_artifact.get(artifact["symbolicName"]) or metrics_by_artifact.get(artifact["name"]) or {"has_data": False}
+        seen_external_ids.add(artifact["id"])
+        existing = (
+            db.query(Integration)
+            .filter(
+                Integration.user_id == current_user.id,
+                Integration.external_id == artifact["id"],
+                Integration.external_source == "CPI",
+            )
+            .first()
+        )
+        metrics = (
+            metrics_by_artifact.get(artifact["symbolicName"])
+            or metrics_by_artifact.get(artifact["name"])
+            or {"has_data": False}
+        )
+        endpoints = connector.get_integration_endpoints(artifact["id"]) if metrics["has_data"] else []
 
         integration_data = convert_cpi_to_integration(artifact, endpoints)
         integration_data["user_id"] = current_user.id
+        if existing and existing.target_system and integration_data["target_system"] == "Unknown":
+            integration_data["target_system"] = existing.target_system
 
         if metrics["has_data"]:
             score, criticality = compute_score_and_criticality(
@@ -424,16 +461,17 @@ def sync_cpi_integrations(
                     "criticality": criticality,
                 }
             )
-
-        existing = (
-            db.query(Integration)
-            .filter(
-                Integration.user_id == current_user.id,
-                Integration.external_id == artifact["id"],
-                Integration.external_source == "CPI",
+        elif existing:
+            integration_data.update(
+                {
+                    "monthly_volume": existing.monthly_volume,
+                    "error_count": existing.error_count,
+                    "error_rate": existing.error_rate,
+                    "avg_processing_time": existing.avg_processing_time,
+                    "score": existing.score,
+                    "criticality": existing.criticality,
+                }
             )
-            .first()
-        )
 
         if existing:
             for key, value in integration_data.items():
@@ -444,9 +482,17 @@ def sync_cpi_integrations(
             db.add(Integration(**integration_data))
 
         total_synced += 1
-        if index % 50 == 0:
+        if index % 100 == 0:
             db.commit()
 
+    if payload.reset:
+        db.query(Integration).filter(
+            Integration.user_id == current_user.id,
+            Integration.external_source == "CPI",
+            ~Integration.external_id.in_(seen_external_ids),
+        ).delete(synchronize_session=False)
+
+    deduplicate_cpi_integrations(db, current_user.id)
     db.commit()
     return {
         "message": "Sincronização CPI concluída",
