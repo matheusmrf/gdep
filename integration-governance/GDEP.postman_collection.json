@@ -1,0 +1,148 @@
+{
+  "info": {
+    "name": "GDEP API",
+    "description": "Collection de testes para a API GDEP",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Get All Integrations",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/integrations",
+          "host": ["{{base_url}}"],
+          "path": ["integrations"]
+        }
+      }
+    },
+    {
+      "name": "Get Integrations - Filter by Platform CPI",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/integrations?platform=CPI",
+          "host": ["{{base_url}}"],
+          "path": ["integrations"],
+          "query": [
+            {
+              "key": "platform",
+              "value": "CPI"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Integrations - Filter by Criticality",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/integrations?criticality=Crítica",
+          "host": ["{{base_url}}"],
+          "path": ["integrations"],
+          "query": [
+            {
+              "key": "criticality",
+              "value": "Crítica"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Search Integrations",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/integrations?search=SFDC",
+          "host": ["{{base_url}}"],
+          "path": ["integrations"],
+          "query": [
+            {
+              "key": "search",
+              "value": "SFDC"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Summary",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/summary",
+          "host": ["{{base_url}}"],
+          "path": ["summary"]
+        }
+      }
+    },
+    {
+      "name": "Sync CPI - Environment Variables",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reset\": false,\n  \"include_mpl\": true,\n  \"message_limit\": 20\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/integrations/sync-cpi",
+          "host": ["{{base_url}}"],
+          "path": ["integrations", "sync-cpi"]
+        }
+      }
+    },
+    {
+      "name": "Sync CPI - Example (Replace with your credentials)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"cpi_host\": \"l400231-tmn.hci.br1.hana.ondemand.com\",\n  \"cpi_username\": \"seu_usuario\",\n  \"cpi_password\": \"sua_senha\",\n  \"cpi_tenant_id\": \"l400231\",\n  \"reset\": false\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/integrations/sync-cpi",
+          "host": ["{{base_url}}"],
+          "path": ["integrations", "sync-cpi"]
+        }
+      }
+    }
+  ]
+}

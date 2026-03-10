@@ -23,4 +23,14 @@ def app_module(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client(app_module):
-    return TestClient(app_module["main"].app)
+    client = TestClient(app_module["main"].app)
+    response = client.post(
+        "/auth/register",
+        json={
+            "name": "Test User",
+            "email": "test@example.com",
+            "password": "StrongPass123!",
+        },
+    )
+    assert response.status_code == 200
+    return client

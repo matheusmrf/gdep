@@ -1,60 +1,1052 @@
 <!DOCTYPE html>
-<html>
+<html lang="pt-BR">
 <head>
-    <title>Integration Governance Dashboard</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GDEP | Login e Governança</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #f3f0ea;
+            --panel: rgba(255, 255, 255, 0.97);
+            --ink: #202328;
+            --muted: #5f6670;
+            --line: rgba(22, 29, 37, 0.08);
+            --accent: #c21f2f;
+            --accent-dark: #991523;
+            --blue: #0f4c81;
+            --blue-soft: #d9e8f5;
+            --sand: #ebe2d6;
+            --success: #2d8d46;
+            --shadow: 0 24px 55px rgba(33, 30, 28, 0.12);
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: var(--ink);
+            background:
+                radial-gradient(circle at top left, rgba(194, 31, 47, 0.14), transparent 24%),
+                radial-gradient(circle at 85% 18%, rgba(15, 76, 129, 0.11), transparent 24%),
+                linear-gradient(135deg, #fffdfb, #f2ede6 55%, #ece5da);
+            min-height: 100vh;
+        }
+
+        .shell {
+            width: min(1220px, calc(100vw - 28px));
+            margin: 18px auto 40px;
+        }
+
+        .card, .hero, .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .hidden { display: none !important; }
+
+        .auth-layout {
+            min-height: calc(100vh - 36px);
+            display: grid;
+            grid-template-columns: 1.15fr 0.95fr;
+            gap: 22px;
+            align-items: stretch;
+        }
+
+        .hero {
+            padding: 34px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            background:
+                linear-gradient(145deg, rgba(255,255,255,0.99), rgba(243,237,229,0.98));
+            border-left: 6px solid var(--accent);
+        }
+
+        .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            color: var(--accent);
+            font-size: 0.78rem;
+            font-weight: 700;
+        }
+
+        h1, h2, h3 { margin: 0; }
+        h1 {
+            font-size: clamp(2.4rem, 4vw, 4rem);
+            line-height: 0.95;
+            margin-top: 10px;
+        }
+
+        .hero p, .subtle, .status, .idea li, .alert-item {
+            color: var(--muted);
+        }
+
+        .hero-grid, .stats-grid, .filters, .action-row, .topbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+
+        .pagination-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .mini-stat {
+            flex: 1 1 160px;
+            padding: 16px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: linear-gradient(180deg, rgba(255,255,255,1), rgba(248,244,239,0.96));
+        }
+
+        .mini-stat strong {
+            display: block;
+            font-size: 1.5rem;
+            margin-bottom: 4px;
+        }
+
+        .card {
+            padding: 26px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            border: 1px solid var(--line);
+            background: #fff;
+            border-radius: 999px;
+            padding: 10px 16px;
+            cursor: pointer;
+        }
+
+        .tab.active,
+        button.primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: transparent;
+        }
+
+        .tab.active {
+            box-shadow: 0 10px 24px rgba(194, 31, 47, 0.22);
+        }
+
+        label {
+            display: grid;
+            gap: 6px;
+            margin-bottom: 12px;
+            color: var(--muted);
+            font-size: 0.94rem;
+        }
+
+        input, select, button, textarea {
+            font: inherit;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            padding: 12px 14px;
+            background: #fff;
+            color: var(--ink);
+        }
+
+        button {
+            cursor: pointer;
+            transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+        }
+
+        button.secondary {
+            background: transparent;
+        }
+
+        .full { width: 100%; }
+
+        .app-layout {
+            display: grid;
+            gap: 20px;
+        }
+
+        .topbar {
+            justify-content: space-between;
+            align-items: center;
+            padding: 18px 22px;
+            background:
+                linear-gradient(135deg, rgba(255,255,255,0.98), rgba(235,226,214,0.78));
+        }
+
+        .topbar nav {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .panel {
+            padding: 22px;
+        }
+
+        .stats-grid {
+            margin-top: 16px;
+        }
+
+        .stat-card {
+            flex: 1 1 180px;
+            padding: 16px;
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            background: linear-gradient(180deg, #fff, #f8f4ef);
+        }
+
+        .stat-card strong {
+            display: block;
+            font-size: 1.6rem;
+            margin-bottom: 4px;
+        }
+
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 0.95fr 1.25fr;
+            gap: 20px;
+        }
+
+        .table-wrap { overflow: hidden; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: fixed;
+            font-size: 0.94rem;
+        }
+        th, td {
+            text-align: left;
+            padding: 12px 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: top;
+        }
+        th { color: var(--muted); }
+        .cell-text { overflow-wrap: anywhere; line-height: 1.35; }
+        .cell-number { white-space: nowrap; }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            background: rgba(194, 31, 47, 0.1);
+            color: var(--accent);
+        }
+
+        .badge.high {
+            background: rgba(255, 127, 41, 0.14);
+            color: #d85f00;
+        }
+
+        .badge.medium {
+            background: rgba(242, 176, 38, 0.16);
+            color: #a56a00;
+        }
+
+        .badge.low {
+            background: rgba(45, 141, 70, 0.12);
+            color: var(--success);
+        }
+
+        .alert-list, .idea {
+            display: grid;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .alert-item, .idea {
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 14px;
+            background: linear-gradient(180deg, #fff, #f8f5f1);
+        }
+
+        .sync-banner {
+            display: none;
+            margin-top: 14px;
+            padding: 14px 16px;
+            border-radius: 16px;
+            border: 1px solid rgba(15, 76, 129, 0.15);
+            background: linear-gradient(135deg, rgba(15, 76, 129, 0.08), rgba(217, 232, 245, 0.8));
+        }
+
+        .sync-banner.open {
+            display: block;
+        }
+
+        .help-trigger {
+            width: 34px;
+            height: 34px;
+            border-radius: 999px;
+            background: #fff;
+            color: var(--accent);
+            font-weight: 700;
+        }
+
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            background: rgba(0,0,0,0.5);
+            z-index: 20;
+        }
+
+        .modal-backdrop.open { display: flex; }
+        .modal {
+            width: min(560px, 100%);
+            border-radius: 22px;
+            padding: 24px;
+            background: #fff;
+            box-shadow: 0 24px 60px rgba(0,0,0,0.2);
+        }
+
+        @media (max-width: 980px) {
+            .auth-layout, .layout-grid { grid-template-columns: 1fr; }
+
+            table, thead, tbody, tr, td {
+                display: block;
+                width: 100% !important;
+            }
+            thead { display: none; }
+            tbody { display: grid; gap: 12px; }
+            tbody tr {
+                background: #fff;
+                border: 1px solid var(--line);
+                border-radius: 16px;
+                padding: 10px 12px;
+            }
+            td { border-bottom: none; padding: 7px 0; }
+            td::before {
+                content: attr(data-label);
+                display: block;
+                font-size: 0.76rem;
+                color: var(--muted);
+                text-transform: uppercase;
+                font-weight: 700;
+                letter-spacing: 0.04em;
+                margin-bottom: 2px;
+            }
+        }
+    </style>
 </head>
 <body>
+    <main class="shell">
+        <section id="authView" class="auth-layout">
+            <section class="hero">
+                <div>
+                    <div class="eyebrow">GDEP Secure Access</div>
+                    <h1>Governança de integrações com acesso por conta.</h1>
+                    <p>Faça login para ver seu dashboard isolado, sincronizar o seu CPI e gerenciar credenciais de forma segura antes de qualquer coleta.</p>
+                </div>
+                <div class="hero-grid">
+                    <article class="mini-stat">
+                        <strong>Senha forte</strong>
+                        <span>Hash com PBKDF2 e política mínima de complexidade.</span>
+                    </article>
+                    <article class="mini-stat">
+                        <strong>Sessão segura</strong>
+                        <span>Cookie HttpOnly com expiração e revogação no logout.</span>
+                    </article>
+                    <article class="mini-stat">
+                        <strong>CPI cifrado</strong>
+                        <span>Senha do CPI armazenada cifrada no servidor.</span>
+                    </article>
+                </div>
+            </section>
+            <section class="card">
+                <div class="tabs">
+                    <button class="tab active" id="loginTab">Entrar</button>
+                    <button class="tab" id="registerTab">Cadastrar</button>
+                </div>
+                <form id="loginForm">
+                    <label>E-mail
+                        <input type="email" id="loginEmail" required />
+                    </label>
+                    <label>Senha
+                        <input type="password" id="loginPassword" required />
+                    </label>
+                    <button class="primary full" type="submit">Entrar no dashboard</button>
+                </form>
+                <form id="registerForm" class="hidden">
+                    <label>Nome
+                        <input type="text" id="registerName" required />
+                    </label>
+                    <label>E-mail
+                        <input type="email" id="registerEmail" required />
+                    </label>
+                    <label>Senha
+                        <input type="password" id="registerPassword" required />
+                    </label>
+                    <button class="primary full" type="submit">Criar conta</button>
+                </form>
+                <p class="status" id="authStatus"></p>
+            </section>
+        </section>
 
-<h1>Integration Governance Dashboard</h1>
+        <section id="appView" class="app-layout hidden">
+            <header class="card topbar">
+                <div>
+                    <div class="eyebrow">GDEP Workspace</div>
+                    <strong id="welcomeUser">Conta</strong>
+                </div>
+                <nav>
+                    <button class="secondary" id="dashboardNav">Dashboard</button>
+                    <button class="secondary" id="settingsNav">Configurações</button>
+                    <button class="secondary" id="logoutButton">Sair</button>
+                </nav>
+            </header>
 
-<canvas id="criticalityChart"></canvas>
+            <section id="dashboardSection">
+                <section class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <div class="eyebrow">Painel</div>
+                            <h2 style="display:inline-block; margin-right:10px;">Suas integrações monitoradas</h2>
+                            <button class="help-trigger" id="criticalityHelpButton">i</button>
+                            <p class="subtle">Somente dados da sua conta logada.</p>
+                        </div>
+                        <div class="action-row">
+                            <button class="secondary" id="refreshButton">Atualizar</button>
+                            <button class="primary" id="syncButton">Sincronizar CPI</button>
+                        </div>
+                    </div>
+                    <div class="filters">
+                        <label>Buscar
+                            <input id="searchInput" type="text" placeholder="Flow, API, ECC..." />
+                        </label>
+                        <label>Criticidade
+                            <select id="criticalityFilter">
+                                <option value="">Todas</option>
+                                <option value="Crítica">Crítica</option>
+                                <option value="Alta">Alta</option>
+                                <option value="Média">Média</option>
+                                <option value="Baixa">Baixa</option>
+                            </select>
+                        </label>
+                        <label>Plataforma
+                            <select id="platformFilter">
+                                <option value="">Todas</option>
+                                <option value="CPI">CPI</option>
+                                <option value="MuleSoft">MuleSoft</option>
+                                <option value="Kafka">Kafka</option>
+                                <option value="API Gateway">API Gateway</option>
+                            </select>
+                        </label>
+                        <label>Período
+                            <select id="datePresetFilter">
+                                <option value="">Todo o período</option>
+                                <option value="3">Últimos 3 dias</option>
+                                <option value="7">Últimos 7 dias</option>
+                                <option value="30">Últimos 30 dias</option>
+                                <option value="custom">Escolher datas</option>
+                            </select>
+                        </label>
+                        <label>Data início
+                            <input id="startDateFilter" type="date" />
+                        </label>
+                        <label>Data fim
+                            <input id="endDateFilter" type="date" />
+                        </label>
+                        <label>Score mínimo
+                            <input id="minScoreFilter" type="number" min="0" max="100" step="1" />
+                        </label>
+                        <label>Por página
+                            <select id="pageSizeSelect">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </label>
+                    </div>
+                    <p class="status" id="statusText"></p>
+                    <div class="sync-banner" id="syncBanner">
+                        <strong>Nenhum dado coletado ainda.</strong>
+                        <div class="subtle">As credenciais do CPI já estão salvas. Clique em <strong>Sincronizar CPI</strong> para carregar as integrações reais ou use <strong>Salvar e sincronizar</strong> nas configurações.</div>
+                    </div>
+                    <div class="stats-grid" id="metricCards"></div>
+                </section>
 
-<table border="1">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Volume</th>
-            <th>Error Rate</th>
-            <th>Score</th>
-            <th>Criticality</th>
-        </tr>
-    </thead>
-    <tbody id="tableBody"></tbody>
-</table>
+                <section class="layout-grid">
+                    <section class="panel">
+                        <div class="panel-header">
+                            <div>
+                                <h3>Distribuição de criticidade</h3>
+                                <div class="subtle">Resumo consolidado da sua conta.</div>
+                            </div>
+                        </div>
+                        <canvas id="criticalityChart" height="260"></canvas>
+                        <div class="alert-list" id="alertList"></div>
+                    </section>
 
-<script>
-fetch("http://127.0.0.1:8000/integrations")
-.then(res => res.json())
-.then(data => {
-    const table = document.getElementById("tableBody");
+                    <section class="panel table-wrap">
+                        <div class="panel-header">
+                            <div>
+                                <h3>Integrações</h3>
+                                <div class="subtle">Ordenadas por score, do maior risco para o menor.</div>
+                            </div>
+                            <div class="subtle" id="resultCount"></div>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>Plataforma</th>
+                                    <th>Origem</th>
+                                    <th>Destino</th>
+                                    <th>Volume</th>
+                                    <th>Erro</th>
+                                    <th>Tempo</th>
+                                    <th>Score</th>
+                                    <th>Criticidade</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tableBody"></tbody>
+                        </table>
+                        <div class="empty-state hidden" id="emptyState">Nenhuma integração encontrada.</div>
+                        <div class="pagination">
+                            <div class="subtle" id="paginationInfo"></div>
+                            <div class="pagination-controls">
+                                <button class="secondary" id="prevPageButton">Anterior</button>
+                                <span class="subtle" id="pageIndicator"></span>
+                                <button class="secondary" id="nextPageButton">Próxima</button>
+                            </div>
+                        </div>
+                    </section>
+                </section>
+            </section>
 
-    let criticalCounts = {Crítica:0, Alta:0, Média:0, Baixa:0};
+            <section id="settingsSection" class="hidden">
+                <section class="panel">
+                    <div class="panel-header">
+                        <div>
+                            <div class="eyebrow">Configurações Gerais</div>
+                            <h2>Credenciais do CPI</h2>
+                            <p class="subtle">Essas credenciais ficam associadas somente à sua conta e são usadas na sincronização.</p>
+                        </div>
+                    </div>
+                    <form id="settingsForm">
+                        <label>Host do CPI
+                            <input type="text" id="settingsHost" placeholder="l400231-tmn.hci.br1.hana.ondemand.com" required />
+                        </label>
+                        <label>Usuário do CPI
+                            <input type="text" id="settingsUsername" required />
+                        </label>
+                        <label>Senha do CPI
+                            <input type="password" id="settingsPassword" placeholder="Informe para salvar ou atualizar" required />
+                        </label>
+                        <label>Tenant ID
+                            <input type="text" id="settingsTenantId" required />
+                        </label>
+                        <div class="action-row">
+                            <button class="primary" type="submit">Salvar credenciais</button>
+                            <button class="secondary" type="button" id="syncFromSettingsButton">Salvar e sincronizar</button>
+                        </div>
+                    </form>
+                    <p class="status" id="settingsStatus"></p>
+                    <div class="idea">
+                        <strong>Ideias para evoluir esta área</strong>
+                        <ul>
+                            <li>separar ambientes Produção, QA e Sandbox por usuário</li>
+                            <li>agendar sincronização automática diária</li>
+                            <li>criar favoritos para integrações críticas</li>
+                            <li>disparar alertas por e-mail quando erro ou tempo exceder limite</li>
+                        </ul>
+                    </div>
+                </section>
+            </section>
+        </section>
+    </main>
 
-    data.forEach(item => {
-        let row = `<tr>
-            <td>${item.name}</td>
-            <td>${item.monthly_volume}</td>
-            <td>${(item.error_rate * 100).toFixed(2)}%</td>
-            <td>${item.score.toFixed(2)}</td>
-            <td>${item.criticality}</td>
-        </tr>`;
-        table.innerHTML += row;
-        criticalCounts[item.criticality]++;
-    });
+    <div class="modal-backdrop" id="criticalityModal">
+        <div class="modal">
+            <div class="panel-header">
+                <h3>Criticidade</h3>
+                <button class="secondary" id="closeCriticalityModal">Fechar</button>
+            </div>
+            <p>O score vai de 0 a 100 e hoje usa:</p>
+            <ul>
+                <li>40% volume</li>
+                <li>40% taxa de erro</li>
+                <li>20% peso de negócio</li>
+            </ul>
+            <p>Faixas:</p>
+            <ul>
+                <li>Crítica: 80 ou mais</li>
+                <li>Alta: 60 a 79,99</li>
+                <li>Média: 30 a 59,99</li>
+                <li>Baixa: abaixo de 30</li>
+            </ul>
+            <p>Quando o CPI não retorna MPL, volume, erro e tempo aparecem como N/D.</p>
+        </div>
+    </div>
 
-    new Chart(document.getElementById("criticalityChart"), {
-        type: "bar",
-        data: {
-            labels: Object.keys(criticalCounts),
-            datasets: [{
-                label: "Criticality Distribution",
-                data: Object.values(criticalCounts)
-            }]
+    <script>
+        const apiBase = window.location.origin;
+        const authView = document.getElementById("authView");
+        const appView = document.getElementById("appView");
+        const authStatus = document.getElementById("authStatus");
+        const statusText = document.getElementById("statusText");
+        const settingsStatus = document.getElementById("settingsStatus");
+        const welcomeUser = document.getElementById("welcomeUser");
+        const metricCards = document.getElementById("metricCards");
+        const tableBody = document.getElementById("tableBody");
+        const resultCount = document.getElementById("resultCount");
+        const alertList = document.getElementById("alertList");
+        const emptyState = document.getElementById("emptyState");
+        const searchInput = document.getElementById("searchInput");
+        const criticalityFilter = document.getElementById("criticalityFilter");
+        const platformFilter = document.getElementById("platformFilter");
+        const datePresetFilter = document.getElementById("datePresetFilter");
+        const startDateFilter = document.getElementById("startDateFilter");
+        const endDateFilter = document.getElementById("endDateFilter");
+        const minScoreFilter = document.getElementById("minScoreFilter");
+        const pageSizeSelect = document.getElementById("pageSizeSelect");
+        const prevPageButton = document.getElementById("prevPageButton");
+        const nextPageButton = document.getElementById("nextPageButton");
+        const paginationInfo = document.getElementById("paginationInfo");
+        const pageIndicator = document.getElementById("pageIndicator");
+        const dashboardSection = document.getElementById("dashboardSection");
+        const settingsSection = document.getElementById("settingsSection");
+        const syncBanner = document.getElementById("syncBanner");
+
+        let chart;
+        let lastIntegrations = [];
+        let currentSettings = null;
+        let currentPage = 1;
+        let currentTotal = 0;
+
+        const criticalityStyle = {
+            "Crítica": "badge",
+            "Alta": "badge high",
+            "Média": "badge medium",
+            "Baixa": "badge low"
+        };
+
+        function setStatus(el, message, isError = false) {
+            el.textContent = message;
+            el.style.color = isError ? "var(--accent)" : "var(--muted)";
         }
-    });
-});
-</script>
 
+        async function api(path, options = {}) {
+            const response = await fetch(`${apiBase}${path}`, {
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(options.headers || {})
+                },
+                ...options
+            });
+
+            if (response.status === 401) {
+                showAuth();
+                throw new Error("Sua sessão expirou.");
+            }
+
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.detail || `Erro ${response.status}`);
+            }
+
+            if (response.status === 204) {
+                return null;
+            }
+
+            return response.json();
+        }
+
+        function showAuth() {
+            authView.classList.remove("hidden");
+            appView.classList.add("hidden");
+        }
+
+        function showApp() {
+            authView.classList.add("hidden");
+            appView.classList.remove("hidden");
+        }
+
+        function showSection(section) {
+            dashboardSection.classList.toggle("hidden", section !== "dashboard");
+            settingsSection.classList.toggle("hidden", section !== "settings");
+        }
+
+        function formatNumber(value) {
+            return new Intl.NumberFormat("pt-BR").format(value);
+        }
+
+        function metricValue(item, field, formatter) {
+            const unavailable = item.external_source === "CPI" &&
+                item.monthly_volume === 0 &&
+                item.error_count === 0 &&
+                item.avg_processing_time === 0;
+
+            if (unavailable && ["monthly_volume", "error_rate", "avg_processing_time"].includes(field)) {
+                return "N/D";
+            }
+
+            return formatter(item[field]);
+        }
+
+        function renderMetrics(summary) {
+            const cards = [
+                ["Integrações", formatNumber(summary.total_integrations)],
+                ["Score médio", summary.average_score.toFixed(2)],
+                ["Volume mensal", formatNumber(summary.total_monthly_volume)],
+                ["Erros", formatNumber(summary.total_error_count)]
+            ];
+            metricCards.innerHTML = cards.map(([label, value]) => `
+                <article class="stat-card">
+                    <strong>${value}</strong>
+                    <span>${label}</span>
+                </article>
+            `).join("");
+        }
+
+        function renderAlerts(alerts) {
+            if (!alerts.length) {
+                alertList.innerHTML = `<div class="idea">Nenhum alerta relevante para a sua conta agora.</div>`;
+                return;
+            }
+
+            alertList.innerHTML = alerts.map((alert) => `
+                <article class="alert-item">
+                    <strong>${alert.integration_name}</strong><br />
+                    <span>${alert.message}</span>
+                </article>
+            `).join("");
+        }
+
+        function renderChart(distribution) {
+            const labels = ["Crítica", "Alta", "Média", "Baixa"];
+            if (chart) chart.destroy();
+            chart = new Chart(document.getElementById("criticalityChart"), {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [{
+                        label: "Integrações",
+                        data: labels.map((label) => distribution[label] || 0),
+                        backgroundColor: ["#c8202e", "#f97316", "#f5b942", "#2d8d46"],
+                        borderRadius: 10
+                    }]
+                },
+                options: { responsive: true, plugins: { legend: { display: false } } }
+            });
+        }
+
+        function renderTable(data, total, skip, limit) {
+            lastIntegrations = data;
+            currentTotal = total;
+            tableBody.innerHTML = data.map((item) => `
+                <tr>
+                    <td data-label="Nome" class="cell-text">${item.name}</td>
+                    <td data-label="Plataforma" class="cell-text">${item.platform}</td>
+                    <td data-label="Origem" class="cell-text">${item.source_system}</td>
+                    <td data-label="Destino" class="cell-text">${item.target_system}</td>
+                    <td data-label="Volume" class="cell-number">${metricValue(item, "monthly_volume", formatNumber)}</td>
+                    <td data-label="Erro" class="cell-number">${metricValue(item, "error_rate", (value) => `${(value * 100).toFixed(2)}%`)}</td>
+                    <td data-label="Tempo" class="cell-number">${metricValue(item, "avg_processing_time", (value) => `${value.toFixed(2)} ms`)}</td>
+                    <td data-label="Score" class="cell-number">${item.score.toFixed(2)}</td>
+                    <td data-label="Criticidade" class="cell-text"><span class="${criticalityStyle[item.criticality]}">${item.criticality}</span></td>
+                </tr>
+            `).join("");
+            const start = total === 0 ? 0 : skip + 1;
+            const end = Math.min(skip + limit, total);
+            resultCount.textContent = `${total} registro(s)`;
+            paginationInfo.textContent = total === 0 ? "Sem resultados" : `Exibindo ${start}-${end} de ${total}`;
+            const totalPages = Math.max(1, Math.ceil(total / limit));
+            pageIndicator.textContent = `Página ${currentPage} de ${totalPages}`;
+            prevPageButton.disabled = currentPage <= 1;
+            nextPageButton.disabled = currentPage >= totalPages;
+            emptyState.classList.toggle("hidden", data.length > 0);
+        }
+
+        function hasConfiguredCPI() {
+            return Boolean(
+                currentSettings &&
+                currentSettings.cpi_host &&
+                currentSettings.cpi_username &&
+                currentSettings.cpi_tenant_id &&
+                currentSettings.has_password
+            );
+        }
+
+        async function saveSettings() {
+            const payload = {
+                cpi_host: document.getElementById("settingsHost").value,
+                cpi_username: document.getElementById("settingsUsername").value,
+                cpi_password: document.getElementById("settingsPassword").value,
+                cpi_tenant_id: document.getElementById("settingsTenantId").value
+            };
+
+            const saved = await api("/me/cpi-settings", {
+                method: "PUT",
+                body: JSON.stringify(payload)
+            });
+            currentSettings = saved;
+            document.getElementById("settingsPassword").value = "";
+            return saved;
+        }
+
+        function buildQuery() {
+            const params = new URLSearchParams();
+            if (searchInput.value.trim()) params.set("search", searchInput.value.trim());
+            if (criticalityFilter.value) params.set("criticality", criticalityFilter.value);
+            if (platformFilter.value) params.set("platform", platformFilter.value);
+            if (startDateFilter.value) params.set("start_date", startDateFilter.value);
+            if (endDateFilter.value) params.set("end_date", endDateFilter.value);
+            if (minScoreFilter.value) params.set("min_score", minScoreFilter.value);
+            const limit = Number(pageSizeSelect.value);
+            const skip = (currentPage - 1) * limit;
+            params.set("limit", String(limit));
+            params.set("skip", String(skip));
+            const query = params.toString();
+            return query ? `?${query}` : "";
+        }
+
+        async function loadDashboard() {
+            setStatus(statusText, "Carregando seu dashboard...");
+            try {
+                const [summary, integrationsPage, alerts] = await Promise.all([
+                    api("/summary"),
+                    api(`/integrations${buildQuery()}`),
+                    api("/alerts")
+                ]);
+                renderMetrics(summary);
+                renderChart(summary.criticality_distribution);
+                renderTable(
+                    integrationsPage.items,
+                    integrationsPage.total,
+                    integrationsPage.skip,
+                    integrationsPage.limit
+                );
+                renderAlerts(alerts.alerts);
+                syncBanner.classList.toggle("open", summary.total_integrations === 0 && hasConfiguredCPI());
+                setStatus(statusText, "Dados carregados com sucesso.");
+            } catch (error) {
+                setStatus(statusText, error.message, true);
+            }
+        }
+
+        async function loadSettings() {
+            try {
+                const settings = await api("/me/cpi-settings");
+                currentSettings = settings;
+                document.getElementById("settingsHost").value = settings.cpi_host || "";
+                document.getElementById("settingsUsername").value = settings.cpi_username || "";
+                document.getElementById("settingsTenantId").value = settings.cpi_tenant_id || "";
+                document.getElementById("settingsPassword").value = "";
+                if (settings.updated_at) {
+                    setStatus(settingsStatus, `Credenciais salvas. Última atualização: ${new Date(settings.updated_at).toLocaleString("pt-BR")}`);
+                }
+            } catch (error) {
+                setStatus(settingsStatus, error.message, true);
+            }
+        }
+
+        async function boot() {
+            try {
+                const me = await api("/me");
+                welcomeUser.textContent = `${me.name} · ${me.email}`;
+                showApp();
+                showSection("dashboard");
+                await Promise.all([loadDashboard(), loadSettings()]);
+            } catch (_) {
+                showAuth();
+            }
+        }
+
+        document.getElementById("loginTab").addEventListener("click", () => {
+            document.getElementById("loginTab").classList.add("active");
+            document.getElementById("registerTab").classList.remove("active");
+            document.getElementById("loginForm").classList.remove("hidden");
+            document.getElementById("registerForm").classList.add("hidden");
+        });
+
+        document.getElementById("registerTab").addEventListener("click", () => {
+            document.getElementById("registerTab").classList.add("active");
+            document.getElementById("loginTab").classList.remove("active");
+            document.getElementById("registerForm").classList.remove("hidden");
+            document.getElementById("loginForm").classList.add("hidden");
+        });
+
+        document.getElementById("loginForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            try {
+                await api("/auth/login", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        email: document.getElementById("loginEmail").value,
+                        password: document.getElementById("loginPassword").value
+                    })
+                });
+                setStatus(authStatus, "Login realizado.");
+                await boot();
+            } catch (error) {
+                setStatus(authStatus, error.message, true);
+            }
+        });
+
+        document.getElementById("registerForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            try {
+                await api("/auth/register", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        name: document.getElementById("registerName").value,
+                        email: document.getElementById("registerEmail").value,
+                        password: document.getElementById("registerPassword").value
+                    })
+                });
+                setStatus(authStatus, "Conta criada com sucesso.");
+                await boot();
+            } catch (error) {
+                setStatus(authStatus, error.message, true);
+            }
+        });
+
+        document.getElementById("logoutButton").addEventListener("click", async () => {
+            await api("/auth/logout", { method: "POST" });
+            showAuth();
+        });
+
+        document.getElementById("dashboardNav").addEventListener("click", () => showSection("dashboard"));
+        document.getElementById("settingsNav").addEventListener("click", async () => {
+            showSection("settings");
+            await loadSettings();
+        });
+
+        document.getElementById("settingsForm").addEventListener("submit", async (event) => {
+            event.preventDefault();
+            try {
+                await saveSettings();
+                setStatus(settingsStatus, "Credenciais salvas com sucesso.");
+            } catch (error) {
+                setStatus(settingsStatus, error.message, true);
+            }
+        });
+
+        document.getElementById("syncFromSettingsButton").addEventListener("click", async () => {
+            try {
+                setStatus(settingsStatus, "Salvando credenciais...");
+                await saveSettings();
+                setStatus(settingsStatus, "Sincronizando CPI...");
+                await api("/integrations/sync-cpi", {
+                    method: "POST",
+                    body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 20 })
+                });
+                setStatus(settingsStatus, "Credenciais salvas e CPI sincronizado.");
+                showSection("dashboard");
+                await loadDashboard();
+            } catch (error) {
+                setStatus(settingsStatus, error.message, true);
+            }
+        });
+
+        document.getElementById("refreshButton").addEventListener("click", loadDashboard);
+
+        document.getElementById("syncButton").addEventListener("click", async () => {
+            try {
+                setStatus(statusText, "Sincronizando CPI...");
+                await api("/integrations/sync-cpi", {
+                    method: "POST",
+                    body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 20 })
+                });
+                await loadDashboard();
+                setStatus(statusText, "Sincronização concluída.");
+            } catch (error) {
+                setStatus(statusText, error.message, true);
+                showSection("settings");
+            }
+        });
+
+        [searchInput, criticalityFilter, platformFilter, minScoreFilter, pageSizeSelect, startDateFilter, endDateFilter].forEach((element) => {
+            element.addEventListener("input", () => {
+                currentPage = 1;
+                loadDashboard();
+            });
+            element.addEventListener("change", () => {
+                currentPage = 1;
+                loadDashboard();
+            });
+        });
+
+        datePresetFilter.addEventListener("change", () => {
+            applyDatePreset();
+            currentPage = 1;
+            loadDashboard();
+        });
+
+        prevPageButton.addEventListener("click", async () => {
+            if (currentPage > 1) {
+                currentPage -= 1;
+                await loadDashboard();
+            }
+        });
+
+        nextPageButton.addEventListener("click", async () => {
+            const totalPages = Math.max(1, Math.ceil(currentTotal / Number(pageSizeSelect.value)));
+            if (currentPage < totalPages) {
+                currentPage += 1;
+                await loadDashboard();
+            }
+        });
+
+        document.getElementById("criticalityHelpButton").addEventListener("click", () => {
+            document.getElementById("criticalityModal").classList.add("open");
+        });
+        document.getElementById("closeCriticalityModal").addEventListener("click", () => {
+            document.getElementById("criticalityModal").classList.remove("open");
+        });
+        document.getElementById("criticalityModal").addEventListener("click", (event) => {
+            if (event.target.id === "criticalityModal") {
+                event.currentTarget.classList.remove("open");
+            }
+        });
+
+        boot();
+    </script>
 </body>
 </html>
+        function applyDatePreset() {
+            const preset = datePresetFilter.value;
+            if (!preset) {
+                startDateFilter.value = "";
+                endDateFilter.value = "";
+                return;
+            }
+            if (preset !== "custom") {
+                const today = new Date();
+                const start = new Date();
+                start.setDate(today.getDate() - Number(preset));
+                const toIso = (date) => date.toISOString().split("T")[0];
+                startDateFilter.value = toIso(start);
+                endDateFilter.value = toIso(today);
+            }
+        }

@@ -1,19 +1,16 @@
 # GDEP
 
-Projeto de governança e criticidade de integrações, composto por um backend em FastAPI, persistência com SQLAlchemy e um frontend HTML simples para visualização das integrações e sua distribuição por criticidade.
+Projeto de governança de integrações com backend em FastAPI, persistência via SQLAlchemy e dashboard web servido pela própria API.
 
-## Objetivo
+## O que o projeto entrega
 
-Fornecer uma base para avaliação operacional de integrações, atribuindo score e criticidade a fluxos com base em volume, taxa de erro, tempo médio e peso de negócio.
-
-## Stack
-
-- Python
-- FastAPI
-- SQLAlchemy
-- SQLite por padrão
-- PostgreSQL via Docker Compose
-- HTML + Chart.js no frontend estático
+- Dashboard acessível em `GET /`
+- API para listar integrações com filtros
+- Endpoint de resumo operacional
+- Geração de massa mock para popular o ambiente
+- Execução local com SQLite
+- Execução com Docker Compose usando PostgreSQL
+- Testes automatizados cobrindo API e seed
 
 ## Estrutura
 
@@ -21,67 +18,38 @@ Fornecer uma base para avaliação operacional de integrações, atribuindo scor
 GDEP/
 ├── README.md
 ├── CPI DASHBOARD/
-│   └── Solucao CPI DASHBOARD.docx
 └── integration-governance/
     ├── backend/
-    │   ├── main.py
     │   ├── collector.py
     │   ├── database.py
+    │   ├── Dockerfile
+    │   ├── main.py
     │   ├── models.py
     │   ├── requirements.txt
-    │   └── Dockerfile
+    │   └── schemas.py
     ├── frontend/
     │   └── index.html
+    ├── backend/tests/
     ├── docker-compose.yml
-    └── integration_governance.db
+    └── pytest.ini
 ```
 
-## Componentes
+## Endpoints principais
 
-### Backend
+- `GET /health`: status simples da aplicação
+- `GET /`: dashboard HTML
+- `GET /integrations`: lista integrações
+- `GET /summary`: resumo agregado do ambiente
+- `POST /integrations/seed`: gera base mock
 
-O backend expõe atualmente um endpoint principal:
+### Filtros suportados em `/integrations`
 
-- `GET /integrations`: retorna todas as integrações cadastradas
-
-A aplicação cria as tabelas na inicialização com base nos models SQLAlchemy.
-
-### Coletor de dados mock
-
-O arquivo `backend/collector.py` gera dados sintéticos para povoar a base. Ele calcula:
-
-- volume mensal
-- quantidade de erros
-- taxa de erro
-- score
-- criticidade (`Crítica`, `Alta`, `Média`, `Baixa`)
-
-### Frontend
-
-O arquivo `frontend/index.html` consome a API em `http://127.0.0.1:8000/integrations` e exibe:
-
-- tabela com integrações
-- gráfico de barras com distribuição por criticidade
-
-## Modelo de dados
-
-A entidade `Integration` contém:
-
-- `name`
-- `platform`
-- `source_system`
-- `target_system`
-- `monthly_volume`
-- `error_count`
-- `error_rate`
-- `avg_processing_time`
-- `business_weight`
-- `score`
 - `criticality`
+- `platform`
+- `search`
+- `min_score`
 
 ## Execução local
-
-### Ambiente Python direto
 
 ```bash
 cd integration-governance
@@ -91,25 +59,27 @@ pip install -r backend/requirements.txt
 uvicorn backend.main:app --reload
 ```
 
-API disponível em:
+Abra:
 
-```text
-http://127.0.0.1:8000
+- Dashboard: `http://127.0.0.1:8000`
+- Healthcheck: `http://127.0.0.1:8000/health`
+- Documentação OpenAPI: `http://127.0.0.1:8000/docs`
+
+## Popular o ambiente com dados mock
+
+Via API:
+
+```bash
+curl -X POST http://127.0.0.1:8000/integrations/seed \
+  -H "Content-Type: application/json" \
+  -d '{"count": 20, "reset": true}'
 ```
 
-### Gerar dados mock
+Via script:
 
 ```bash
 cd integration-governance
 python3 backend/collector.py
-```
-
-### Abrir frontend
-
-Abra o arquivo abaixo no navegador, ou sirva a pasta com um servidor simples:
-
-```text
-integration-governance/frontend/index.html
 ```
 
 ## Execução com Docker
@@ -119,29 +89,23 @@ cd integration-governance
 docker compose up --build
 ```
 
-O `docker-compose.yml` sobe:
+Serviços:
 
-- `db`: PostgreSQL
-- `backend`: FastAPI em `8000`
+- `backend`: FastAPI em `http://127.0.0.1:8000`
+- `db`: PostgreSQL em `localhost:5432`
 
-## Observações técnicas importantes
+O frontend já é copiado para a imagem e servido pelo backend.
 
-- o backend usa SQLite por padrão via `DATABASE_URL`, apesar do `docker-compose` subir PostgreSQL
-- o `database.py` aplica `check_same_thread=False`, típico para SQLite
-- não há, no estado atual, integração real com SAP CPI ou fontes produtivas
-- o frontend assume a API em `127.0.0.1:8000`, sem configuração por ambiente
+## Testes
 
-## Casos de uso esperados
+```bash
+cd integration-governance
+python3 -m pytest
+```
 
-- prova de conceito de governança de integrações
-- dashboard interno para priorização operacional
-- base inicial para enriquecer com dados reais de monitoramento
+## Observações
 
-## Melhorias recomendadas
-
-- alinhar definitivamente SQLite versus PostgreSQL
-- criar endpoint para carga real de dados
-- adicionar paginação e filtros na API
-- separar frontend em projeto próprio
-- incluir autenticação e autorização
-- cobrir regras de score com testes automatizados
+- SQLite é o banco padrão fora do Docker.
+- No Docker Compose, o backend usa PostgreSQL.
+- A base mock reinicializa os dados por padrão ao executar o seed.
+- Ainda não existe ingestão real de dados de SAP CPI ou outras plataformas produtivas.
