@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Integration Governance Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<h1>Integration Governance Dashboard</h1>
+
+<canvas id="criticalityChart"></canvas>
+
+<table border="1">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Volume</th>
+            <th>Error Rate</th>
+            <th>Score</th>
+            <th>Criticality</th>
+        </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+</table>
+
+<script>
+fetch("http://127.0.0.1:8000/integrations")
+.then(res => res.json())
+.then(data => {
+    const table = document.getElementById("tableBody");
+
+    let criticalCounts = {Crítica:0, Alta:0, Média:0, Baixa:0};
+
+    data.forEach(item => {
+        let row = `<tr>
+            <td>${item.name}</td>
+            <td>${item.monthly_volume}</td>
+            <td>${(item.error_rate * 100).toFixed(2)}%</td>
+            <td>${item.score.toFixed(2)}</td>
+            <td>${item.criticality}</td>
+        </tr>`;
+        table.innerHTML += row;
+        criticalCounts[item.criticality]++;
+    });
+
+    new Chart(document.getElementById("criticalityChart"), {
+        type: "bar",
+        data: {
+            labels: Object.keys(criticalCounts),
+            datasets: [{
+                label: "Criticality Distribution",
+                data: Object.values(criticalCounts)
+            }]
+        }
+    });
+});
+</script>
+
+</body>
+</html>
