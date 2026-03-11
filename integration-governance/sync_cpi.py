@@ -6,7 +6,7 @@ Script para sincronizar integrações do SAP CPI com o GDEP de forma manual.
 Suporta variáveis de ambiente para credenciais.
 
 Uso:
-    python sync_cpi.py [--host HOST] [--user USER] [--passwd PASSWD] [--tenant TENANT] [--reset]
+    python sync_cpi.py --email USER --password PASS [--host HOST] [--user CPI_USER] [--passwd CPI_PASS] [--tenant TENANT] [--reset]
 
 Variáveis de Ambiente (opcional):
     CPI_HOST        - Host do CPI (ex: l400231-tmn.hci.br1.hana.ondemand.com)
@@ -14,14 +14,14 @@ Variáveis de Ambiente (opcional):
     CPI_PASSWORD    - Senha
     CPI_TENANT_ID   - ID do Tenant
     GDEP_API_URL    - URL base do GDEP (padrão: http://127.0.0.1:8000)
+    GDEP_USER_EMAIL - Usuário de login no GDEP
+    GDEP_USER_PASSWORD - Senha de login no GDEP
 """
 
 import os
 import sys
-import json
 import argparse
 import requests
-from typing import Optional
 from pathlib import Path
 
 
@@ -60,10 +60,14 @@ def load_config_from_env() -> dict:
         "cpi_password": os.getenv("CPI_PASSWORD", env_vars.get("CPI_PASSWORD", "")),
         "cpi_tenant_id": os.getenv("CPI_TENANT_ID", env_vars.get("CPI_TENANT_ID", "")),
         "gdep_api_url": os.getenv("GDEP_API_URL", env_vars.get("GDEP_API_URL", "http://127.0.0.1:8000")),
+        "gdep_user_email": os.getenv("GDEP_USER_EMAIL", env_vars.get("GDEP_USER_EMAIL", "")),
+        "gdep_user_password": os.getenv("GDEP_USER_PASSWORD", env_vars.get("GDEP_USER_PASSWORD", "")),
     }
 
 
 def sync_cpi(
+    gdep_user_email: str,
+    gdep_user_password: str,
     cpi_host: str,
     cpi_username: str,
     cpi_password: str,
@@ -75,6 +79,8 @@ def sync_cpi(
     Sincroniza dados do CPI com o GDEP.
 
     Args:
+        gdep_user_email: E-mail do usuário no GDEP
+        gdep_user_password: Senha do usuário no GDEP
         cpi_host: Host do CPI (sem https://)
         cpi_username: Usuário para autenticação
         cpi_password: Senha
@@ -85,12 +91,16 @@ def sync_cpi(
     Returns:
         Resposta da API GDEP
     """
-    payload = {
+    settings_payload = {
         "cpi_host": cpi_host,
         "cpi_username": cpi_username,
         "cpi_password": cpi_password,
         "cpi_tenant_id": cpi_tenant_id,
+    }
+    sync_payload = {
         "reset": reset,
+        "include_mpl": True,
+        "message_limit": 100,
     }
 
     try:
@@ -100,9 +110,25 @@ def sync_cpi(
         print(f"   Reset: {'Sim' if reset else 'Não'}")
         print()
 
-        response = requests.post(
+        session = requests.Session()
+
+        login_response = session.post(
+            f"{gdep_api_url}/auth/login",
+            json={"email": gdep_user_email, "password": gdep_user_password},
+            timeout=30,
+        )
+        login_response.raise_for_status()
+
+        settings_response = session.put(
+            f"{gdep_api_url}/me/cpi-settings",
+            json=settings_payload,
+            timeout=30,
+        )
+        settings_response.raise_for_status()
+
+        response = session.post(
             f"{gdep_api_url}/integrations/sync-cpi",
-            json=payload,
+            json=sync_payload,
             timeout=120,
         )
 
@@ -138,10 +164,12 @@ def main():
 Exemplos:
 
   # Usando variáveis de ambiente
-  CPI_HOST=l400231-tmn.hci.br1.hana.ondemand.com python sync_cpi.py
+    GDEP_USER_EMAIL=user@empresa.com GDEP_USER_PASSWORD=minha_senha CPI_HOST=meu-host-cpi python sync_cpi.py
 
   # Com argumentos de linha de comando
-  python sync_cpi.py --host l400231-tmn.hci.br1.hana.ondemand.com \\
+    python sync_cpi.py --email user@empresa.com \
+                                         --password minha_senha \
+                                         --host l400231-tmn.hci.br1.hana.ondemand.com \
                      --user seu_usuario \\
                      --passwd sua_senha \\
                      --tenant l400231
@@ -154,6 +182,16 @@ Exemplos:
         """,
     )
 
+    parser.add_argument(
+        "--email",
+        help="E-mail do usuário no GDEP",
+        default=None,
+    )
+    parser.add_argument(
+        "--password",
+        help="Senha do usuário no GDEP",
+        default=None,
+    )
     parser.add_argument(
         "--host",
         help="Host do CPI (sem https://)",
@@ -196,12 +234,15 @@ Exemplos:
     cpi_password = args.passwd or env_config["cpi_password"]
     cpi_tenant_id = args.tenant or env_config["cpi_tenant_id"]
     gdep_api_url = args.gdep_url or env_config["gdep_api_url"]
+    gdep_user_email = args.email or env_config["gdep_user_email"]
+    gdep_user_password = args.password or env_config["gdep_user_password"]
 
     # Validar campos obrigatórios
-    if not all([cpi_host, cpi_username, cpi_password, cpi_tenant_id]):
-        print("❌ Erro: Faltam credenciais do CPI")
+    if not all([gdep_user_email, gdep_user_password, cpi_host, cpi_username, cpi_password, cpi_tenant_id]):
+        print("❌ Erro: Faltam credenciais do GDEP e/ou CPI")
         print()
         print("Defina via:")
+        print("  1. Credenciais do GDEP: GDEP_USER_EMAIL, GDEP_USER_PASSWORD ou --email/--password")
         print("  1. Variáveis de ambiente: CPI_HOST, CPI_USERNAME, CPI_PASSWORD, CPI_TENANT_ID")
         print("  2. Argumentos de linha de comando: --host, --user, --passwd, --tenant")
         print()
@@ -210,6 +251,8 @@ Exemplos:
 
     # Executar sincronização
     result = sync_cpi(
+        gdep_user_email=gdep_user_email,
+        gdep_user_password=gdep_user_password,
         cpi_host=cpi_host,
         cpi_username=cpi_username,
         cpi_password=cpi_password,

@@ -36,9 +36,11 @@ Você precisará das seguintes informações:
 - **Password**: Senha da conta
 - **Tenant ID**: ID do tenant CPI (ex: `l400231`)
 
-### 2. Endpoint de Sincronização
+### 2. Endpoints de Configuração e Sincronização
 
-**POST** `/integrations/sync-cpi`
+As credenciais CPI são salvas por usuário autenticado no endpoint abaixo:
+
+**PUT** `/me/cpi-settings`
 
 #### Request Body
 
@@ -47,8 +49,21 @@ Você precisará das seguintes informações:
   "cpi_host": "l400231-tmn.hci.br1.hana.ondemand.com",
   "cpi_username": "seu_usuario",
   "cpi_password": "sua_senha",
-  "cpi_tenant_id": "l400231",
-  "reset": false
+  "cpi_tenant_id": "l400231"
+}
+```
+
+Após salvar as credenciais, execute a sincronização:
+
+**POST** `/integrations/sync-cpi`
+
+#### Request Body
+
+```json
+{
+  "reset": false,
+  "include_mpl": true,
+  "message_limit": 100
 }
 ```
 
@@ -56,11 +71,9 @@ Você precisará das seguintes informações:
 
 | Campo | Tipo | Descrição |
 |-------|------|-----------|
-| `cpi_host` | string | Host do CPI (sem https://) |
-| `cpi_username` | string | Usuário para autenticação |
-| `cpi_password` | string | Senha |
-| `cpi_tenant_id` | string | ID do tenant |
 | `reset` | boolean | Se true, remove integrações CPI anteriores antes de sincronizar (default: false) |
+| `include_mpl` | boolean | Inclui métricas de Message Processing Logs |
+| `message_limit` | integer | Limite lógico de mensagens por execução (1 a 100) |
 
 #### Response
 
@@ -75,14 +88,28 @@ Você precisará das seguintes informações:
 ### 3. Sincronização Manual via cURL
 
 ```bash
-curl -X POST http://127.0.0.1:8000/integrations/sync-cpi \
+# Login
+curl -c cookies.txt -X POST http://127.0.0.1:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"seu_email","password":"sua_senha"}'
+
+# Salvar configurações CPI
+curl -b cookies.txt -X PUT http://127.0.0.1:8000/me/cpi-settings \
   -H "Content-Type: application/json" \
   -d '{
     "cpi_host": "l400231-tmn.hci.br1.hana.ondemand.com",
     "cpi_username": "seu_usuario",
     "cpi_password": "sua_senha",
-    "cpi_tenant_id": "l400231",
-    "reset": false
+    "cpi_tenant_id": "l400231"
+  }'
+
+# Sincronizar
+curl -b cookies.txt -X POST http://127.0.0.1:8000/integrations/sync-cpi \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reset": false,
+    "include_mpl": true,
+    "message_limit": 100
   }'
 ```
 
@@ -92,17 +119,28 @@ curl -X POST http://127.0.0.1:8000/integrations/sync-cpi \
 import requests
 
 cpi_config = {
+  "reset": False,
+  "include_mpl": True,
+  "message_limit": 100,
+}
+
+session = requests.Session()
+session.post(
+  "http://127.0.0.1:8000/auth/login",
+  json={"email": "seu_email", "password": "sua_senha"},
+).raise_for_status()
+
+session.put(
+  "http://127.0.0.1:8000/me/cpi-settings",
+  json={
     "cpi_host": "l400231-tmn.hci.br1.hana.ondemand.com",
     "cpi_username": "seu_usuario",
     "cpi_password": "sua_senha",
     "cpi_tenant_id": "l400231",
-    "reset": False
-}
+  },
+).raise_for_status()
 
-response = requests.post(
-    "http://127.0.0.1:8000/integrations/sync-cpi",
-    json=cpi_config
-)
+response = session.post("http://127.0.0.1:8000/integrations/sync-cpi", json=cpi_config)
 
 print(response.json())
 ```
@@ -184,9 +222,9 @@ Para SAP PO, o processo é similar mas com endpoints diferentes:
 
 ```bash
 # Sincronizar diariamente às 2 AM
-0 2 * * * curl -X POST http://localhost:8000/integrations/sync-cpi \
+0 2 * * * curl -b /opt/gdep/cookies.txt -X POST http://localhost:8000/integrations/sync-cpi \
   -H "Content-Type: application/json" \
-  -d '{"cpi_host": "...", "cpi_username": "...", "cpi_password": "...", "cpi_tenant_id": "...", "reset": false}'
+  -d '{"reset": false, "include_mpl": true, "message_limit": 100}'
 ```
 
 ## Segurança

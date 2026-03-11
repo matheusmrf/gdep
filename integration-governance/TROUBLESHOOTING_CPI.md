@@ -26,14 +26,29 @@ cd /Users/matheusfigueiredo/Documents/Arcelormittal/Desenvolvimentos/GDEP/integr
 ### 2. Em outro terminal: Sincronizar via cURL
 
 ```bash
+# Login
+curl -c cookies.txt -X POST http://127.0.0.1:8000/auth/login \
+   -H "Content-Type: application/json" \
+   -d '{"email":"seu_email","password":"sua_senha"}'
+
+# Salvar credenciais CPI na conta
+curl -b cookies.txt -X PUT http://127.0.0.1:8000/me/cpi-settings \
+   -H "Content-Type: application/json" \
+   -d '{
+         "cpi_host": "seu-host-cpi",
+         "cpi_username": "seu_usuario",
+         "cpi_password": "sua_senha",
+         "cpi_tenant_id": "seu_tenant"
+   }'
+
+# Sincronizar
 curl -X POST http://127.0.0.1:8000/integrations/sync-cpi \
+   -b cookies.txt \
   -H "Content-Type: application/json" \
   -d '{
-    "cpi_host": "l400231-tmn.hci.br1.hana.ondemand.com",
-    "cpi_username": "S0025012682",
-    "cpi_password": "etm*wpk.UKG6pxj@dty",
-    "cpi_tenant_id": "l400231",
-    "reset": true
+      "reset": true,
+      "include_mpl": true,
+      "message_limit": 100
   }'
 ```
 
@@ -66,10 +81,10 @@ Se tiver Postman instalado:
 1. Importe `GDEP.postman_collection.json`
 2. Configure variáveis:
    ```
-   cpi_host = l400231-tmn.hci.br1.hana.ondemand.com
-   cpi_username = S0025012682
-   cpi_password = etm*wpk.UKG6pxj@dty
-   cpi_tenant_id = l400231
+   cpi_host = seu-host-cpi
+   cpi_username = seu_usuario
+   cpi_password = sua_senha
+   cpi_tenant_id = seu_tenant
    ```
 3. Use a requisição "Sync CPI"
 

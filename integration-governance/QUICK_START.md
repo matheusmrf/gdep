@@ -125,16 +125,31 @@ curl "http://127.0.0.1:8000/integrations?criticality=Crítica" | jq
 curl http://127.0.0.1:8000/summary | jq
 ```
 
-### Sincronizar novamente
+### Sincronizar novamente (API autenticada)
 ```bash
+# 1) Login e salvar cookie
+curl -c cookies.txt -X POST http://127.0.0.1:8000/auth/login \
+   -H "Content-Type: application/json" \
+   -d '{"email":"seu_email","password":"sua_senha"}'
+
+# 2) Atualizar credenciais CPI da sua conta
+curl -b cookies.txt -X PUT http://127.0.0.1:8000/me/cpi-settings \
+   -H "Content-Type: application/json" \
+   -d '{
+      "cpi_host": "seu-host",
+      "cpi_username": "usuario",
+      "cpi_password": "senha",
+      "cpi_tenant_id": "tenant"
+   }'
+
+# 3) Executar sincronização
 curl -X POST http://127.0.0.1:8000/integrations/sync-cpi \
+   -b cookies.txt \
   -H "Content-Type: application/json" \
   -d '{
-    "cpi_host": "seu-host",
-    "cpi_username": "usuario",
-    "cpi_password": "senha",
-    "cpi_tenant_id": "tenant",
-    "reset": false
+      "reset": false,
+      "include_mpl": true,
+      "message_limit": 100
   }' | jq
 ```
 
