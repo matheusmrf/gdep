@@ -7,304 +7,659 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
-            --bg: #f3f0ea;
-            --panel: rgba(255, 255, 255, 0.97);
-            --ink: #202328;
-            --muted: #5f6670;
-            --line: rgba(22, 29, 37, 0.08);
-            --accent: #c21f2f;
-            --accent-dark: #991523;
-            --blue: #0f4c81;
-            --blue-soft: #d9e8f5;
-            --sand: #ebe2d6;
-            --success: #2d8d46;
-            --shadow: 0 24px 55px rgba(33, 30, 28, 0.12);
+            --bg: #f0f2f5;
+            --panel: #ffffff;
+            --ink: #1a1f36;
+            --muted: #6b7a99;
+            --line: #e3e8f0;
+            --accent: #c8202e;
+            --accent-dark: #a01820;
+            --accent-hover: #b51c28;
+            --accent-light: rgba(200, 32, 46, 0.08);
+            --steel: #1e2d45;
+            --steel-mid: #3d5166;
+            --steel-light: #d0dcea;
+            --success: #1a7a3c;
+            --warning: #c97a0a;
+            --shadow-sm: 0 1px 4px rgba(26, 31, 54, 0.07), 0 2px 8px rgba(26, 31, 54, 0.05);
+            --shadow: 0 4px 20px rgba(26, 31, 54, 0.10);
+            --shadow-lg: 0 12px 48px rgba(26, 31, 54, 0.18);
+            --radius: 10px;
+            --radius-lg: 14px;
+            --radius-xl: 20px;
         }
 
-        * { box-sizing: border-box; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            margin: 0;
-            font-family: "Segoe UI", Arial, sans-serif;
+            font-family: "Segoe UI", system-ui, Arial, sans-serif;
+            font-size: 14px;
             color: var(--ink);
-            background:
-                radial-gradient(circle at top left, rgba(194, 31, 47, 0.14), transparent 24%),
-                radial-gradient(circle at 85% 18%, rgba(15, 76, 129, 0.11), transparent 24%),
-                linear-gradient(135deg, #fffdfb, #f2ede6 55%, #ece5da);
+            background: var(--bg);
             min-height: 100vh;
-        }
-
-        .shell {
-            width: min(1220px, calc(100vw - 28px));
-            margin: 18px auto 40px;
-        }
-
-        .card, .hero, .panel {
-            background: var(--panel);
-            border: 1px solid var(--line);
-            border-radius: 24px;
-            box-shadow: var(--shadow);
+            line-height: 1.5;
         }
 
         .hidden { display: none !important; }
 
+        /* ── AUTH ───────────────────────────────────────── */
         .auth-layout {
-            min-height: calc(100vh - 36px);
+            min-height: 100vh;
             display: grid;
-            grid-template-columns: 1.15fr 0.95fr;
-            gap: 22px;
-            align-items: stretch;
+            grid-template-columns: 1.2fr 0.9fr;
         }
 
         .hero {
-            padding: 34px;
+            background: linear-gradient(145deg, var(--steel) 0%, #111d30 100%);
+            padding: 52px 48px;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            background:
-                linear-gradient(145deg, rgba(255,255,255,0.99), rgba(243,237,229,0.98));
-            border-left: 6px solid var(--accent);
+            color: #fff;
+            position: relative;
+            overflow: hidden;
         }
 
-        .eyebrow {
-            text-transform: uppercase;
-            letter-spacing: 0.18em;
-            color: var(--accent);
-            font-size: 0.78rem;
+        .hero::before {
+            content: "";
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: var(--accent);
+        }
+
+        .hero::after {
+            content: "";
+            position: absolute;
+            bottom: -100px; right: -100px;
+            width: 360px; height: 360px;
+            border-radius: 50%;
+            background: rgba(200, 32, 46, 0.07);
+            pointer-events: none;
+        }
+
+        .hero-brand {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 40px;
+        }
+
+        .hero-logo {
+            width: 44px; height: 44px;
+            background: var(--accent);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 1rem; color: #fff;
+            flex-shrink: 0;
+        }
+
+        .hero-brand-name { font-weight: 700; font-size: 1.05rem; color: rgba(255,255,255,0.9); }
+        .hero-brand-sub  { font-size: 0.75rem; color: rgba(255,255,255,0.45); margin-top: 1px; }
+
+        h1, h2, h3 { line-height: 1.2; }
+
+        .hero h1 {
+            font-size: clamp(1.9rem, 3.2vw, 2.9rem);
+            color: #fff;
+            margin-bottom: 14px;
             font-weight: 700;
         }
 
-        h1, h2, h3 { margin: 0; }
-        h1 {
-            font-size: clamp(2.4rem, 4vw, 4rem);
-            line-height: 0.95;
-            margin-top: 10px;
+        .hero p {
+            color: rgba(255,255,255,0.62);
+            font-size: 0.9rem;
+            max-width: 420px;
+            line-height: 1.6;
         }
 
-        .hero p, .subtle, .status, .idea li, .alert-item {
-            color: var(--muted);
-        }
-
-        .hero-grid, .stats-grid, .filters, .action-row, .topbar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-
-        .pagination {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-top: 16px;
-        }
-
-        .pagination-controls {
-            display: flex;
+        .hero-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             gap: 10px;
-            align-items: center;
-            flex-wrap: wrap;
+            margin-top: 40px;
         }
 
         .mini-stat {
-            flex: 1 1 160px;
-            padding: 16px;
-            border: 1px solid var(--line);
-            border-radius: 18px;
-            background: linear-gradient(180deg, rgba(255,255,255,1), rgba(248,244,239,0.96));
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: var(--radius-lg);
+            padding: 14px 16px;
         }
 
         .mini-stat strong {
             display: block;
-            font-size: 1.5rem;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #fff;
             margin-bottom: 4px;
         }
 
-        .card {
-            padding: 26px;
+        .mini-stat span {
+            font-size: 0.76rem;
+            color: rgba(255,255,255,0.55);
+            line-height: 1.4;
         }
 
+        .auth-card {
+            background: var(--panel);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 52px 44px;
+        }
+
+        .auth-card-title {
+            font-size: 1.35rem;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 6px;
+        }
+
+        .auth-card-sub {
+            color: var(--muted);
+            font-size: 0.85rem;
+            margin-bottom: 28px;
+        }
+
+        .eyebrow {
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 10px;
+        }
+
+        /* ── TABS ───────────────────────────────────────── */
         .tabs {
             display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
+            gap: 3px;
+            margin-bottom: 24px;
+            background: var(--bg);
+            border-radius: var(--radius);
+            padding: 3px;
         }
 
         .tab {
-            border: 1px solid var(--line);
-            background: #fff;
-            border-radius: 999px;
-            padding: 10px 16px;
+            flex: 1;
+            border: none;
+            background: transparent;
+            border-radius: 8px;
+            padding: 8px 14px;
             cursor: pointer;
-        }
-
-        .tab.active,
-        button.primary {
-            background: var(--accent);
-            color: #fff;
-            border-color: transparent;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--muted);
+            transition: all 140ms ease;
+            outline: none;
         }
 
         .tab.active {
-            box-shadow: 0 10px 24px rgba(194, 31, 47, 0.22);
-        }
-
-        label {
-            display: grid;
-            gap: 6px;
-            margin-bottom: 12px;
-            color: var(--muted);
-            font-size: 0.94rem;
-        }
-
-        input, select, button, textarea {
-            font: inherit;
-            border-radius: 12px;
-            border: 1px solid var(--line);
-            padding: 12px 14px;
             background: #fff;
             color: var(--ink);
+            font-weight: 600;
+            box-shadow: var(--shadow-sm);
+        }
+
+        /* ── FORM ───────────────────────────────────────── */
+        label {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 14px;
+            font-size: 0.76rem;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        input, select, textarea {
+            font: inherit;
+            font-size: 0.9rem;
+            font-weight: 400;
+            text-transform: none;
+            letter-spacing: normal;
+            border-radius: var(--radius);
+            border: 1.5px solid var(--line);
+            padding: 9px 12px;
+            background: #fff;
+            color: var(--ink);
+            transition: border-color 140ms ease, box-shadow 140ms ease;
+            outline: none;
+            width: 100%;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(200, 32, 46, 0.10);
         }
 
         button {
             cursor: pointer;
-            transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+            font: inherit;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border-radius: var(--radius);
+            border: 1.5px solid transparent;
+            padding: 9px 18px;
+            transition: all 140ms ease;
+            outline: none;
+            line-height: 1.4;
         }
 
-        button:hover {
+        button.primary {
+            background: var(--accent);
+            color: #fff;
+            border-color: var(--accent);
+        }
+
+        button.primary:hover {
+            background: var(--accent-dark);
+            border-color: var(--accent-dark);
+            box-shadow: 0 4px 16px rgba(200, 32, 46, 0.28);
             transform: translateY(-1px);
-            box-shadow: 0 8px 20px rgba(0,0,0,0.08);
         }
 
         button.secondary {
             background: transparent;
+            color: var(--steel-mid);
+            border-color: var(--line);
+        }
+
+        button.secondary:hover {
+            background: var(--bg);
+            border-color: var(--steel-light);
+            transform: translateY(-1px);
         }
 
         .full { width: 100%; }
+        .action-row { display: flex; gap: 8px; flex-wrap: wrap; }
 
+        /* ── APP LAYOUT ─────────────────────────────────── */
         .app-layout {
             display: grid;
-            gap: 20px;
+            grid-template-rows: auto 1fr;
+            min-height: 100vh;
         }
 
+        /* ── TOPBAR ─────────────────────────────────────── */
         .topbar {
-            justify-content: space-between;
+            background: var(--steel);
+            padding: 0 24px;
+            display: flex;
             align-items: center;
-            padding: 18px 22px;
-            background:
-                linear-gradient(135deg, rgba(255,255,255,0.98), rgba(235,226,214,0.78));
+            justify-content: space-between;
+            height: 58px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 3px solid var(--accent);
+            box-shadow: 0 2px 12px rgba(26,31,54,0.18);
         }
 
-        .topbar nav {
+        .topbar-brand {
             display: flex;
-            gap: 10px;
+            align-items: center;
+            gap: 11px;
+        }
+
+        .topbar-logo {
+            width: 30px; height: 30px;
+            background: var(--accent);
+            border-radius: 7px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 0.78rem; color: #fff;
+            flex-shrink: 0;
+            letter-spacing: -0.5px;
+        }
+
+        .topbar-title { font-weight: 700; font-size: 0.9rem; color: #fff; }
+        .topbar-subtitle { font-size: 0.7rem; color: rgba(255,255,255,0.45); margin-top: 1px; }
+
+        .topbar nav { display: flex; gap: 2px; }
+
+        .topbar nav button {
+            font-size: 0.8rem;
+            font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 7px;
+            color: rgba(255,255,255,0.68);
+            border-color: transparent;
+            background: transparent;
+        }
+
+        .topbar nav button:hover, .topbar nav button.active-nav {
+            color: #fff;
+            background: rgba(255,255,255,0.10);
+            transform: none;
+            box-shadow: none;
+        }
+
+        .topbar nav #logoutButton { color: rgba(255,160,160,0.8); }
+        .topbar nav #logoutButton:hover { background: rgba(200,32,46,0.28); color: #fff; }
+
+        /* ── MAIN CONTENT ───────────────────────────────── */
+        .main-content {
+            padding: 20px 24px 40px;
+            display: grid;
+            gap: 16px;
+            align-content: start;
+        }
+
+        #dashboardSection { display: grid; gap: 16px; }
+        #settingsSection .panel { max-width: 680px; }
+
+        /* ── PANEL ──────────────────────────────────────── */
+        .panel, .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            padding: 20px 22px;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 16px;
             flex-wrap: wrap;
         }
 
-        .panel {
-            padding: 22px;
-        }
+        .panel-header h2 { font-size: 1.05rem; font-weight: 700; }
+        .panel-header h3 { font-size: 0.92rem; font-weight: 700; }
 
+        .subtle { color: var(--muted); font-size: 0.8rem; }
+        .status { font-size: 0.82rem; min-height: 1.2em; margin-top: 6px; }
+
+        /* ── STAT CARDS ─────────────────────────────────── */
         .stats-grid {
-            margin-top: 16px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 6px;
         }
 
         .stat-card {
-            flex: 1 1 180px;
-            padding: 16px;
+            padding: 15px 16px;
             border: 1px solid var(--line);
-            border-radius: 18px;
-            background: linear-gradient(180deg, #fff, #f8f4ef);
+            border-radius: var(--radius-lg);
+            background: #fff;
+            border-left: 3px solid var(--accent);
+            transition: box-shadow 140ms ease, transform 140ms ease;
         }
+
+        .stat-card:hover { box-shadow: var(--shadow); transform: translateY(-2px); }
 
         .stat-card strong {
             display: block;
-            font-size: 1.6rem;
-            margin-bottom: 4px;
+            font-size: 1.55rem;
+            font-weight: 700;
+            color: var(--ink);
+            margin-bottom: 2px;
+            line-height: 1;
         }
 
-        .layout-grid {
+        .stat-card span {
+            font-size: 0.72rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 600;
+        }
+
+        /* ── FILTERS ────────────────────────────────────── */
+        .filters-section {
+            background: #fff;
+            border: 1px solid var(--line);
+            border-radius: var(--radius-lg);
+            padding: 12px 16px;
+        }
+
+        .filters-bar {
+            display: flex;
+            align-items: flex-end;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        .filter-input {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .filter-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .filters-bar input,
+        .filters-bar select {
+            padding: 6px 10px;
+            font-size: 0.83rem;
+            border-radius: 8px;
+            border: 1.5px solid var(--line);
+            height: 32px;
+            width: auto;
+            background: var(--bg);
+        }
+
+        .filters-bar input:focus, .filters-bar select:focus {
+            background: #fff;
+            border-color: var(--accent);
+        }
+
+        .filter-search { flex: 1 1 180px; }
+        .filter-search input { width: 100%; }
+        .filter-sm select { min-width: 110px; }
+        .filter-xs select { min-width: 90px; }
+
+        .filters-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            color: var(--steel-mid);
+            cursor: pointer;
+            padding: 5px 11px;
+            border-radius: 8px;
+            border: 1.5px solid var(--line);
+            background: var(--bg);
+            white-space: nowrap;
+            height: 32px;
+            margin-left: auto;
+            transition: all 140ms ease;
+        }
+
+        .filters-toggle:hover, .filters-toggle.open {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-light);
+        }
+
+        .filters-advanced {
             display: grid;
-            grid-template-columns: 0.95fr 1.25fr;
-            gap: 20px;
+            grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--line);
         }
 
+        .filters-advanced input,
+        .filters-advanced select {
+            padding: 6px 10px;
+            font-size: 0.83rem;
+            border-radius: 8px;
+            border: 1.5px solid var(--line);
+            height: 32px;
+            background: var(--bg);
+            width: 100%;
+        }
+
+        /* ── TABLE ──────────────────────────────────────── */
         .table-wrap { overflow: hidden; }
+
+        .table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: var(--radius);
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
-            table-layout: fixed;
-            font-size: 0.94rem;
+            font-size: 0.84rem;
+            min-width: 720px;
         }
-        th, td {
+
+        thead th {
             text-align: left;
-            padding: 12px 10px;
-            border-bottom: 1px solid var(--line);
-            vertical-align: top;
+            padding: 9px 10px;
+            border-bottom: 2px solid var(--line);
+            color: var(--muted);
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+            white-space: nowrap;
+            background: #fafbfd;
         }
-        th { color: var(--muted); }
-        .cell-text { overflow-wrap: anywhere; line-height: 1.35; }
-        .cell-number { white-space: nowrap; }
+
+        tbody td {
+            padding: 10px 10px;
+            border-bottom: 1px solid var(--line);
+            vertical-align: middle;
+        }
+
+        tbody tr:last-child td { border-bottom: none; }
+        tbody tr:hover { background: rgba(240,242,245,0.7); }
+
+        .cell-text {
+            max-width: 150px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .cell-name {
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 500;
+        }
+
+        .cell-number {
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            font-size: 0.82rem;
+        }
+
+        /* ── BADGES ─────────────────────────────────────── */
         .badge {
             display: inline-flex;
             align-items: center;
-            border-radius: 999px;
-            padding: 6px 10px;
-            font-size: 0.8rem;
+            border-radius: 6px;
+            padding: 3px 7px;
+            font-size: 0.68rem;
             font-weight: 700;
-            background: rgba(194, 31, 47, 0.1);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            background: rgba(200, 32, 46, 0.10);
             color: var(--accent);
         }
 
-        .badge.high {
-            background: rgba(255, 127, 41, 0.14);
-            color: #d85f00;
-        }
+        .badge.high   { background: rgba(200, 90, 0, 0.12); color: #b85000; }
+        .badge.medium { background: rgba(201, 122, 10, 0.12); color: #956000; }
+        .badge.low    { background: rgba(26, 122, 60, 0.10); color: var(--success); }
 
-        .badge.medium {
-            background: rgba(242, 176, 38, 0.16);
-            color: #a56a00;
-        }
-
-        .badge.low {
-            background: rgba(45, 141, 70, 0.12);
-            color: var(--success);
-        }
-
-        .alert-list, .idea {
+        /* ── LAYOUT GRID ─────────────────────────────────── */
+        .layout-grid {
             display: grid;
-            gap: 10px;
-            margin-top: 14px;
+            grid-template-columns: 320px 1fr;
+            gap: 16px;
+            align-items: start;
         }
 
-        .alert-item, .idea {
+        /* ── ALERT LIST ─────────────────────────────────── */
+        .alert-list { display: grid; gap: 8px; margin-top: 12px; }
+
+        .alert-item {
             border: 1px solid var(--line);
-            border-radius: 16px;
-            padding: 14px;
-            background: linear-gradient(180deg, #fff, #f8f5f1);
+            border-radius: var(--radius);
+            padding: 11px 13px;
+            background: #fff;
+            border-left: 3px solid var(--accent);
         }
 
+        .alert-item strong { font-size: 0.84rem; display: block; margin-bottom: 2px; }
+        .alert-item span { font-size: 0.78rem; color: var(--muted); }
+
+        .idea {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 12px;
+            background: #fff;
+            color: var(--muted);
+            font-size: 0.83rem;
+        }
+
+        /* ── SYNC BANNER ────────────────────────────────── */
         .sync-banner {
             display: none;
-            margin-top: 14px;
-            padding: 14px 16px;
-            border-radius: 16px;
-            border: 1px solid rgba(15, 76, 129, 0.15);
-            background: linear-gradient(135deg, rgba(15, 76, 129, 0.08), rgba(217, 232, 245, 0.8));
+            margin-bottom: 12px;
+            padding: 13px 16px;
+            border-radius: var(--radius-lg);
+            border: 1px solid rgba(15, 76, 129, 0.18);
+            background: linear-gradient(135deg, rgba(15,76,129,0.05), rgba(208,220,234,0.5));
+            font-size: 0.85rem;
+        }
+        .sync-banner.open { display: block; }
+
+        /* ── PAGINATION ─────────────────────────────────── */
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--line);
         }
 
-        .sync-banner.open {
-            display: block;
-        }
+        .pagination-controls { display: flex; gap: 6px; align-items: center; }
+        .pagination-controls button { padding: 6px 12px; font-size: 0.78rem; }
 
+        /* ── HELP / MODAL ───────────────────────────────── */
         .help-trigger {
-            width: 34px;
-            height: 34px;
-            border-radius: 999px;
-            background: #fff;
-            color: var(--accent);
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: var(--steel-light);
+            color: var(--steel-mid);
+            font-size: 0.7rem;
             font-weight: 700;
+            border: none;
+            padding: 0;
+            vertical-align: middle;
+            margin-left: 5px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
         }
+
+        .help-trigger:hover { background: var(--accent); color: #fff; transform: none; box-shadow: none; }
 
         .modal-backdrop {
             position: fixed;
@@ -313,56 +668,69 @@
             align-items: center;
             justify-content: center;
             padding: 20px;
-            background: rgba(0,0,0,0.5);
+            background: rgba(26,31,54,0.55);
+            backdrop-filter: blur(4px);
             z-index: 20;
         }
 
         .modal-backdrop.open { display: flex; }
+
         .modal {
-            width: min(560px, 100%);
-            border-radius: 22px;
+            width: min(500px, 100%);
+            border-radius: var(--radius-xl);
             padding: 24px;
             background: #fff;
-            box-shadow: 0 24px 60px rgba(0,0,0,0.2);
+            box-shadow: var(--shadow-lg);
         }
 
-        @media (max-width: 980px) {
-            .auth-layout, .layout-grid { grid-template-columns: 1fr; }
+        .modal ul { padding-left: 20px; margin: 6px 0 14px; }
+        .modal li { color: var(--muted); font-size: 0.88rem; margin-bottom: 4px; }
+        .modal p { font-size: 0.88rem; color: var(--muted); margin-bottom: 6px; }
 
-            table, thead, tbody, tr, td {
-                display: block;
-                width: 100% !important;
-            }
-            thead { display: none; }
-            tbody { display: grid; gap: 12px; }
-            tbody tr {
-                background: #fff;
-                border: 1px solid var(--line);
-                border-radius: 16px;
-                padding: 10px 12px;
-            }
-            td { border-bottom: none; padding: 7px 0; }
-            td::before {
-                content: attr(data-label);
-                display: block;
-                font-size: 0.76rem;
-                color: var(--muted);
-                text-transform: uppercase;
-                font-weight: 700;
-                letter-spacing: 0.04em;
-                margin-bottom: 2px;
-            }
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--muted);
+            font-size: 0.88rem;
+        }
+
+        /* ── RESPONSIVE ─────────────────────────────────── */
+        @media (max-width: 960px) {
+            .auth-layout { grid-template-columns: 1fr; }
+            .hero { display: none; }
+            .auth-card { padding: 40px 28px; min-height: 100vh; }
+            .layout-grid { grid-template-columns: 1fr; }
+            .topbar { padding: 0 16px; }
+            .main-content { padding: 14px 16px 32px; }
+        }
+
+        @media (max-width: 600px) {
+            .topbar { height: 52px; }
+            .topbar-title { font-size: 0.82rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .filters-bar { gap: 6px; }
+            .filter-search { flex: 1 1 100%; }
+            .pagination { flex-direction: column; align-items: stretch; text-align: center; }
+            .pagination-controls { justify-content: center; }
+            .main-content { padding: 10px 12px 28px; }
+            .panel, .card { padding: 14px 15px; }
         }
     </style>
 </head>
 <body>
-    <main class="shell">
-        <section id="authView" class="auth-layout">
+    <section id="authView" class="auth-layout">
             <section class="hero">
                 <div>
-                    <div class="eyebrow">GDEP Secure Access</div>
+                    <div class="hero-brand">
+                        <div class="hero-logo">AM</div>
+                        <div>
+                            <div class="hero-brand-name">ArcelorMittal</div>
+                            <div class="hero-brand-sub">Integration Governance</div>
+                        </div>
+                    </div>
+                    <div class="eyebrow">GDEP · Acesso seguro</div>
                     <h1>Governança de integrações com acesso por conta.</h1>
-                    <p>Faça login para ver seu dashboard isolado, sincronizar o seu CPI e gerenciar credenciais de forma segura antes de qualquer coleta.</p>
+                    <p>Faça login para ver seu dashboard isolado, sincronizar o CPI e gerenciar credenciais de forma segura.</p>
                 </div>
                 <div class="hero-grid">
                     <article class="mini-stat">
@@ -379,7 +747,10 @@
                     </article>
                 </div>
             </section>
-            <section class="card">
+            <section class="auth-card">
+                <div class="eyebrow">GDEP</div>
+                <div class="auth-card-title">Bem-vindo de volta</div>
+                <div class="auth-card-sub">Acesse sua conta para gerenciar as integrações</div>
                 <div class="tabs">
                     <button class="tab active" id="loginTab">Entrar</button>
                     <button class="tab" id="registerTab">Cadastrar</button>
@@ -410,10 +781,13 @@
         </section>
 
         <section id="appView" class="app-layout hidden">
-            <header class="card topbar">
-                <div>
-                    <div class="eyebrow">GDEP Workspace</div>
-                    <strong id="welcomeUser">Conta</strong>
+            <header class="topbar">
+                <div class="topbar-brand">
+                    <div class="topbar-logo">AM</div>
+                    <div>
+                        <div class="topbar-title">GDEP</div>
+                        <div class="topbar-subtitle" id="welcomeUser">Governança de Integrações</div>
+                    </div>
                 </div>
                 <nav>
                     <button class="secondary" id="dashboardNav">Dashboard</button>
@@ -422,76 +796,102 @@
                 </nav>
             </header>
 
+            <div class="main-content">
+
             <section id="dashboardSection">
                 <section class="panel">
                     <div class="panel-header">
                         <div>
                             <div class="eyebrow">Painel</div>
-                            <h2 style="display:inline-block; margin-right:10px;">Suas integrações monitoradas</h2>
+                            <h2 style="display:inline-block;margin-right:6px;">Suas integrações monitoradas</h2>
                             <button class="help-trigger" id="criticalityHelpButton">i</button>
                             <p class="subtle">Somente dados da sua conta logada.</p>
                         </div>
                         <div class="action-row">
-                            <button class="secondary" id="refreshButton">Atualizar</button>
-                            <button class="primary" id="syncButton">Sincronizar CPI</button>
+                            <button class="secondary" id="refreshButton">↺ Atualizar</button>
+                            <button class="primary" id="syncButton">⟳ Sincronizar CPI</button>
                         </div>
                     </div>
-                    <div class="filters">
-                        <label>Buscar
-                            <input id="searchInput" type="text" placeholder="Flow, API, ECC..." />
-                        </label>
-                        <label>Criticidade
-                            <select id="criticalityFilter">
-                                <option value="">Todas</option>
-                                <option value="Crítica">Crítica</option>
-                                <option value="Alta">Alta</option>
-                                <option value="Média">Média</option>
-                                <option value="Baixa">Baixa</option>
-                            </select>
-                        </label>
-                        <label>Plataforma
-                            <select id="platformFilter">
-                                <option value="">Todas</option>
-                                <option value="CPI">CPI</option>
-                            </select>
-                        </label>
-                        <label>Período
-                            <select id="datePresetFilter">
-                                <option value="">Todo o período</option>
-                                <option value="3">Últimos 3 dias</option>
-                                <option value="7">Últimos 7 dias</option>
-                                <option value="30">Últimos 30 dias</option>
-                                <option value="custom">Escolher datas</option>
-                            </select>
-                        </label>
-                        <label>Data início
-                            <input id="startDateFilter" type="date" />
-                        </label>
-                        <label>Data fim
-                            <input id="endDateFilter" type="date" />
-                        </label>
-                        <label>Score mínimo
-                            <input id="minScoreFilter" type="number" min="0" max="100" step="1" />
-                        </label>
-                        <label>Favoritos
-                            <select id="favoritesFilter">
-                                <option value="">Todos</option>
-                                <option value="1">Somente favoritos</option>
-                            </select>
-                        </label>
-                        <label>Por página
-                            <select id="pageSizeSelect">
-                                <option value="10">10</option>
-                                <option value="25" selected>25</option>
-                                <option value="50">50</option>
-                                <option value="100">100</option>
-                            </select>
-                        </label>
+
+                    <!-- Filtros compactos -->
+                    <div class="filters-section">
+                        <div class="filters-bar">
+                            <div class="filter-input filter-search">
+                                <span class="filter-label">Buscar</span>
+                                <input id="searchInput" type="text" placeholder="Flow, API, ECC..." />
+                            </div>
+                            <div class="filter-input filter-sm">
+                                <span class="filter-label">Criticidade</span>
+                                <select id="criticalityFilter">
+                                    <option value="">Todas</option>
+                                    <option value="Crítica">Crítica</option>
+                                    <option value="Alta">Alta</option>
+                                    <option value="Média">Média</option>
+                                    <option value="Baixa">Baixa</option>
+                                </select>
+                            </div>
+                            <div class="filter-input filter-sm">
+                                <span class="filter-label">Plataforma</span>
+                                <select id="platformFilter">
+                                    <option value="">Todas</option>
+                                    <option value="CPI">CPI</option>
+                                </select>
+                            </div>
+                            <div class="filter-input filter-xs">
+                                <span class="filter-label">Favoritos</span>
+                                <select id="favoritesFilter">
+                                    <option value="">Todos</option>
+                                    <option value="1">Favoritos</option>
+                                </select>
+                            </div>
+                            <div class="filter-input filter-xs">
+                                <span class="filter-label">Com dados</span>
+                                <select id="hasDataFilter">
+                                    <option value="1" selected>Com dados</option>
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
+                            <button class="filters-toggle" id="filtersToggle" type="button">⚙ Avançado ▾</button>
+                        </div>
+                        <div class="filters-advanced hidden" id="filtersAdvanced">
+                            <div class="filter-input">
+                                <span class="filter-label">Período</span>
+                                <select id="datePresetFilter">
+                                    <option value="">Todo o período</option>
+                                    <option value="3">Últimos 3 dias</option>
+                                    <option value="7">Últimos 7 dias</option>
+                                    <option value="30">Últimos 30 dias</option>
+                                    <option value="custom">Escolher datas</option>
+                                </select>
+                            </div>
+                            <div class="filter-input">
+                                <span class="filter-label">Data início</span>
+                                <input id="startDateFilter" type="date" />
+                            </div>
+                            <div class="filter-input">
+                                <span class="filter-label">Data fim</span>
+                                <input id="endDateFilter" type="date" />
+                            </div>
+                            <div class="filter-input">
+                                <span class="filter-label">Score mínimo</span>
+                                <input id="minScoreFilter" type="number" min="0" max="100" step="1" placeholder="0–100" />
+                            </div>
+                            <div class="filter-input">
+                                <span class="filter-label">Por página</span>
+                                <select id="pageSizeSelect">
+                                    <option value="10">10</option>
+                                    <option value="25" selected>25</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+                        </div>
                     </div>
+
                     <p class="status" id="statusText"></p>
                     <div class="sync-banner" id="syncBanner">
                         <strong>Nenhum dado coletado ainda.</strong>
-                        <div class="subtle">As credenciais do CPI já estão salvas. Clique em <strong>Sincronizar CPI</strong> para carregar as integrações reais ou use <strong>Salvar e sincronizar</strong> nas configurações.</div>
+                        <div class="subtle">As credenciais do CPI já estão salvas. Clique em <strong>Sincronizar CPI</strong> para carregar as integrações reais.</div>
                     </div>
                     <div class="stats-grid" id="metricCards"></div>
                 </section>
@@ -516,7 +916,20 @@
                             </div>
                             <div class="subtle" id="resultCount"></div>
                         </div>
+                        <div class="table-scroll">
                         <table>
+                            <colgroup>
+                                <col style="width:36px" />
+                                <col style="width:200px" />
+                                <col style="width:80px" />
+                                <col style="width:120px" />
+                                <col style="width:120px" />
+                                <col style="width:75px" />
+                                <col style="width:65px" />
+                                <col style="width:80px" />
+                                <col style="width:65px" />
+                                <col style="width:90px" />
+                            </colgroup>
                             <thead>
                                 <tr>
                                     <th>⭐</th>
@@ -533,6 +946,7 @@
                             </thead>
                             <tbody id="tableBody"></tbody>
                         </table>
+                        </div>
                         <div class="empty-state hidden" id="emptyState">Nenhuma integração encontrada.</div>
                         <div class="pagination">
                             <div class="subtle" id="paginationInfo"></div>
@@ -657,8 +1071,8 @@
                     </div>
                 </section>
             </section>
-        </section>
-    </main>
+            </div><!-- /main-content -->
+        </section><!-- /appView -->
 
     <div class="modal-backdrop" id="criticalityModal">
         <div class="modal">
@@ -700,6 +1114,7 @@
         const criticalityFilter = document.getElementById("criticalityFilter");
         const platformFilter = document.getElementById("platformFilter");
         const favoritesFilter = document.getElementById("favoritesFilter");
+        const hasDataFilter = document.getElementById("hasDataFilter");
         const datePresetFilter = document.getElementById("datePresetFilter");
         const startDateFilter = document.getElementById("startDateFilter");
         const endDateFilter = document.getElementById("endDateFilter");
@@ -767,9 +1182,14 @@
         }
 
         function metricValue(item, field, formatter) {
-            const unavailable = item.external_source === "CPI" &&
+            // N/D only when monthly_volume is exactly 0 AND error_count is 0 AND avg_processing_time is 0
+            // This means the CPI integration has no message history at all.
+            // With the MPL-primary sync, integrations with real data will always have monthly_volume > 0.
+            const noData = item.external_source === "CPI" &&
                 item.monthly_volume === 0 && item.error_count === 0 && item.avg_processing_time === 0;
-            if (unavailable && ["monthly_volume", "error_rate", "avg_processing_time"].includes(field)) return "N/D";
+            if (noData && ["monthly_volume", "error_rate", "avg_processing_time"].includes(field)) {
+                return `<span style="color:var(--muted);font-style:italic;">sem dados</span>`;
+            }
             return formatter(item[field]);
         }
 
@@ -833,24 +1253,33 @@
         function renderTable(data, total, skip, limit) {
             lastIntegrations = data;
             currentTotal = total;
-            tableBody.innerHTML = data.map((item) => `
+            tableBody.innerHTML = data.map((item) => {
+                const noData = item.external_source === "CPI" &&
+                    item.monthly_volume === 0 && item.error_count === 0 && item.avg_processing_time === 0;
+                const scoreCell = noData
+                    ? `<span style="color:var(--muted);font-style:italic;">—</span>`
+                    : item.score.toFixed(2);
+                const critCell = noData
+                    ? `<span style="color:var(--muted);font-style:italic;">—</span>`
+                    : `<span class="${criticalityStyle[item.criticality]}">${item.criticality}</span>`;
+                return `
                 <tr>
                     <td data-label="Fav" class="cell-number">
                         <button data-fav-id="${item.id}" onclick="toggleFavorite(${item.id})" style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:0;">
                             ${favoriteIds.has(item.id) ? "⭐" : "☆"}
                         </button>
                     </td>
-                    <td data-label="Nome" class="cell-text">${item.name}</td>
+                    <td data-label="Nome" class="cell-name" title="${item.name}">${item.name}</td>
                     <td data-label="Plataforma" class="cell-text">${item.platform}</td>
-                    <td data-label="Origem" class="cell-text">${item.source_system}</td>
-                    <td data-label="Destino" class="cell-text">${item.target_system}</td>
+                    <td data-label="Origem" class="cell-text" title="${item.source_system}">${item.source_system}</td>
+                    <td data-label="Destino" class="cell-text" title="${item.target_system}">${item.target_system}</td>
                     <td data-label="Volume" class="cell-number">${metricValue(item, "monthly_volume", formatNumber)}</td>
                     <td data-label="Erro" class="cell-number">${metricValue(item, "error_rate", (v) => `${(v * 100).toFixed(2)}%`)}</td>
                     <td data-label="Tempo" class="cell-number">${metricValue(item, "avg_processing_time", (v) => `${v.toFixed(0)} ms`)}</td>
-                    <td data-label="Score" class="cell-number">${item.score.toFixed(2)}</td>
-                    <td data-label="Criticidade" class="cell-text"><span class="${criticalityStyle[item.criticality]}">${item.criticality}</span></td>
-                </tr>
-            `).join("");
+                    <td data-label="Score" class="cell-number">${scoreCell}</td>
+                    <td data-label="Criticidade" class="cell-text">${critCell}</td>
+                </tr>`;
+            }).join("");
             const start = total === 0 ? 0 : skip + 1;
             const end = Math.min(skip + limit, total);
             resultCount.textContent = `${total} registro(s)`;
@@ -910,13 +1339,16 @@
                     api("/alerts")
                 ]);
 
-                // Client-side favorites filter
+                // Client-side filters
                 let items = integrationsPage.items;
                 let total = integrationsPage.total;
                 if (favoritesFilter.value === "1") {
                     items = items.filter(i => favoriteIds.has(i.id));
-                    total = items.length;
                 }
+                if (hasDataFilter.value === "1") {
+                    items = items.filter(i => !(i.monthly_volume === 0 && i.error_count === 0 && i.avg_processing_time === 0));
+                }
+                total = items.length;
 
                 renderMetrics(summary);
                 renderChart(summary.criticality_distribution);
@@ -1186,7 +1618,7 @@
             }
         });
 
-        [searchInput, criticalityFilter, platformFilter, favoritesFilter, minScoreFilter, pageSizeSelect, startDateFilter, endDateFilter].forEach((element) => {
+        [searchInput, criticalityFilter, platformFilter, favoritesFilter, hasDataFilter, minScoreFilter, pageSizeSelect, startDateFilter, endDateFilter].forEach((element) => {
             element.addEventListener("input", () => { currentPage = 1; loadDashboard(); });
             element.addEventListener("change", () => { currentPage = 1; loadDashboard(); });
         });
@@ -1223,6 +1655,16 @@
                 endDateFilter.value = toIso(today);
             }
         }
+
+        // Filters toggle
+        document.getElementById("filtersToggle").addEventListener("click", () => {
+            const adv = document.getElementById("filtersAdvanced");
+            const btn = document.getElementById("filtersToggle");
+            const isOpen = !adv.classList.contains("hidden");
+            adv.classList.toggle("hidden", isOpen);
+            btn.classList.toggle("open", !isOpen);
+            btn.textContent = isOpen ? "⚙ Avançado ▾" : "⚙ Avançado ▴";
+        });
 
         boot();
     </script>
