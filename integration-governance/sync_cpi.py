@@ -9,7 +9,7 @@ Uso:
     python sync_cpi.py --email USER --password PASS [--host HOST] [--user CPI_USER] [--passwd CPI_PASS] [--tenant TENANT] [--reset]
 
 Variáveis de Ambiente (opcional):
-    CPI_HOST        - Host do CPI (ex: l400231-tmn.hci.br1.hana.ondemand.com)
+    CPI_HOST        - Host do CPI (ex: xxxxxxx.br1.hana.ondemand.com)
     CPI_USERNAME    - Usuário
     CPI_PASSWORD    - Senha
     CPI_TENANT_ID   - ID do Tenant
