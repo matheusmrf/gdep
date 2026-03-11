@@ -1,7 +1,10 @@
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Optional
+import smtplib
+from email.mime.text import MIMEText
 
+from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -12,18 +15,25 @@ from sqlalchemy.orm import Session
 from backend.collector import calculate_score, classify
 from backend.cpi_connector import CPIConnector, convert_cpi_to_integration
 from backend.database import Base, SessionLocal, engine, sync_schema
-from backend.models import Integration, User, UserSession
+from backend.models import AlertSettings, CPIEnvironment, Favorite, Integration, SyncSchedule, User, UserSession
 from backend.schemas import (
     AlertItem,
     AlertResponse,
+    AlertSettingsRead,
+    AlertSettingsRequest,
+    CPIEnvironmentRead,
+    CPIEnvironmentRequest,
     CPISettingsRequest,
     CPISettingsResponse,
+    FavoriteRead,
     IntegrationRead,
     LoginRequest,
     PaginatedIntegrationsResponse,
     RegisterRequest,
     SummaryResponse,
     SyncCPIRequest,
+    SyncScheduleRead,
+    SyncScheduleRequest,
     UserRead,
 )
 from backend.security import (
@@ -47,6 +57,93 @@ FRONTEND_DIR = BASE_DIR / "frontend"
 app = FastAPI(title="GDEP")
 Base.metadata.create_all(bind=engine)
 sync_schema()
+
+scheduler = BackgroundScheduler()
+
+
+def _run_auto_sync_for_user(user_id: int):
+    """Called by APScheduler: syncs CPI for a user and sends email alerts if configured."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return
+        decrypted = decrypt_secret(user.cpi_password_encrypted)
+        if not all([user.cpi_host, user.cpi_username, decrypted, user.cpi_tenant_id]):
+            return
+        connector = CPIConnector(
+            host=user.cpi_host,
+            username=user.cpi_username,
+            password=decrypted,
+            tenant_id=user.cpi_tenant_id,
+        )
+        if not connector.health_check():
+            return
+        _do_sync(connector, db, user, reset=False, include_mpl=True, message_limit=100)
+        schedule = db.query(SyncSchedule).filter(SyncSchedule.user_id == user_id).first()
+        if schedule:
+            schedule.last_run = datetime.utcnow()
+            db.commit()
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
+def _reload_scheduler():
+    """Rebuild scheduler jobs from DB."""
+    for job in scheduler.get_jobs():
+        job.remove()
+    db = SessionLocal()
+    try:
+        schedules = db.query(SyncSchedule).filter(SyncSchedule.enabled == 1).all()
+        for s in schedules:
+            scheduler.add_job(
+                _run_auto_sync_for_user,
+                "cron",
+                hour=s.hour,
+                minute=0,
+                args=[s.user_id],
+                id=f"sync_user_{s.user_id}",
+                replace_existing=True,
+            )
+    finally:
+        db.close()
+
+
+def _send_alert_email(settings: AlertSettings, violations: list):
+    """Send email alert via SMTP when threshold violations are found."""
+    if not settings.enabled or not settings.email_to or not settings.smtp_host:
+        return
+    try:
+        smtp_password = decrypt_secret(settings.smtp_password_encrypted) if settings.smtp_password_encrypted else ""
+        body = "GDEP — Alertas de Integrações CPI\n\n"
+        for v in violations:
+            body += f"• {v}\n"
+        msg = MIMEText(body, "plain", "utf-8")
+        msg["Subject"] = f"[GDEP] {len(violations)} alerta(s) de integração"
+        msg["From"] = settings.smtp_user or "gdep@noreply"
+        msg["To"] = settings.email_to
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as smtp:
+            smtp.ehlo()
+            if settings.smtp_port in (587, 465):
+                smtp.starttls()
+            if settings.smtp_user and smtp_password:
+                smtp.login(settings.smtp_user, smtp_password)
+            smtp.sendmail(msg["From"], [settings.email_to], msg.as_string())
+    except Exception:
+        pass
+
+
+@app.on_event("startup")
+def startup_event():
+    _reload_scheduler()
+    scheduler.start()
+
+
+@app.on_event("shutdown")
+def shutdown_event():
+    scheduler.shutdown(wait=False)
 
 app.add_middleware(
     CORSMiddleware,
@@ -415,10 +512,27 @@ def sync_cpi_integrations(
     if not connector.health_check():
         raise HTTPException(status_code=401, detail="Falha na autenticação CPI. Verifique as credenciais salvas.")
 
+    total_synced = _do_sync(connector, db, current_user, payload.reset, payload.include_mpl, payload.message_limit)
+
+    # Send email alerts if configured
+    alert_settings = db.query(AlertSettings).filter(AlertSettings.user_id == current_user.id).first()
+    if alert_settings and alert_settings.enabled:
+        violations = _collect_violations(db, current_user.id, alert_settings)
+        if violations:
+            _send_alert_email(alert_settings, violations)
+
+    return {
+        "message": "Sincronização CPI concluída",
+        "total_synced": total_synced,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, include_mpl: bool, message_limit: int) -> int:
     artifacts = connector.get_integration_artifacts()
-    metrics_by_artifact = connector.get_metrics_by_artifact(
-        limit=max(payload.message_limit * 100, 2000)
-    ) if payload.include_mpl else {}
+    bulk_metrics = connector.get_metrics_by_artifact(
+        limit=max(message_limit * 100, 2000)
+    ) if include_mpl else {}
     total_synced = 0
     seen_external_ids = set()
 
@@ -427,25 +541,33 @@ def sync_cpi_integrations(
         existing = (
             db.query(Integration)
             .filter(
-                Integration.user_id == current_user.id,
+                Integration.user_id == user.id,
                 Integration.external_id == artifact["id"],
                 Integration.external_source == "CPI",
             )
             .first()
         )
         metrics = (
-            metrics_by_artifact.get(artifact["symbolicName"])
-            or metrics_by_artifact.get(artifact["name"])
-            or {"has_data": False}
+            bulk_metrics.get(artifact["symbolicName"])
+            or bulk_metrics.get(artifact["name"])
+            or {}
         )
-        endpoints = connector.get_integration_endpoints(artifact["id"]) if metrics["has_data"] else []
+
+        # Targeted fallback for artifacts not covered by bulk fetch
+        if not metrics.get("has_data") and include_mpl and artifact.get("id"):
+            targeted = connector.get_messages_for_artifact(artifact["id"], limit=100)
+            if targeted:
+                from backend.cpi_connector import calculate_metrics
+                metrics = calculate_metrics(targeted)
+
+        endpoints = connector.get_integration_endpoints(artifact["id"]) if metrics.get("has_data") else []
 
         integration_data = convert_cpi_to_integration(artifact, endpoints)
-        integration_data["user_id"] = current_user.id
+        integration_data["user_id"] = user.id
         if existing and existing.target_system and integration_data["target_system"] == "Unknown":
             integration_data["target_system"] = existing.target_system
 
-        if metrics["has_data"]:
+        if metrics.get("has_data"):
             score, criticality = compute_score_and_criticality(
                 metrics["total_messages"],
                 metrics["error_rate"],
@@ -485,20 +607,208 @@ def sync_cpi_integrations(
         if index % 100 == 0:
             db.commit()
 
-    if payload.reset:
+    if reset:
         db.query(Integration).filter(
-            Integration.user_id == current_user.id,
+            Integration.user_id == user.id,
             Integration.external_source == "CPI",
             ~Integration.external_id.in_(seen_external_ids),
         ).delete(synchronize_session=False)
 
-    deduplicate_cpi_integrations(db, current_user.id)
+    deduplicate_cpi_integrations(db, user.id)
     db.commit()
-    return {
-        "message": "Sincronização CPI concluída",
-        "total_synced": total_synced,
-        "timestamp": datetime.utcnow().isoformat(),
-    }
+    return total_synced
+
+
+def _collect_violations(db: Session, user_id: int, settings: AlertSettings) -> list:
+    violations = []
+    integrations = db.query(Integration).filter(Integration.user_id == user_id).all()
+    for i in integrations:
+        if i.error_rate > settings.error_rate_threshold:
+            violations.append(
+                f"{i.name}: taxa de erro {i.error_rate * 100:.1f}% > limite {settings.error_rate_threshold * 100:.1f}%"
+            )
+        if i.avg_processing_time > settings.processing_time_threshold:
+            violations.append(
+                f"{i.name}: tempo médio {i.avg_processing_time:.0f} ms > limite {settings.processing_time_threshold:.0f} ms"
+            )
+    return violations
+
+
+# --- CPI Environments ---
+
+@app.get("/me/cpi-environments", response_model=list[CPIEnvironmentRead])
+def list_environments(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(CPIEnvironment).filter(CPIEnvironment.user_id == current_user.id).all()
+
+
+@app.post("/me/cpi-environments", response_model=CPIEnvironmentRead)
+def create_environment(
+    payload: CPIEnvironmentRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    env = CPIEnvironment(
+        user_id=current_user.id,
+        name=payload.name.strip(),
+        environment_type=payload.environment_type,
+        cpi_host=payload.cpi_host.strip(),
+        cpi_username=payload.cpi_username.strip(),
+        cpi_password_encrypted=encrypt_secret(payload.cpi_password),
+        cpi_tenant_id=payload.cpi_tenant_id.strip(),
+        is_active=0,
+        created_at=datetime.utcnow(),
+    )
+    db.add(env)
+    db.commit()
+    db.refresh(env)
+    return env
+
+
+@app.put("/me/cpi-environments/{env_id}/activate")
+def activate_environment(
+    env_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    env = db.query(CPIEnvironment).filter(CPIEnvironment.id == env_id, CPIEnvironment.user_id == current_user.id).first()
+    if not env:
+        raise HTTPException(status_code=404, detail="Ambiente não encontrado.")
+    # Deactivate all, activate selected
+    db.query(CPIEnvironment).filter(CPIEnvironment.user_id == current_user.id).update({"is_active": 0})
+    env.is_active = 1
+    # Apply to user's main CPI settings
+    current_user.cpi_host = env.cpi_host
+    current_user.cpi_username = env.cpi_username
+    current_user.cpi_password_encrypted = env.cpi_password_encrypted
+    current_user.cpi_tenant_id = env.cpi_tenant_id
+    current_user.settings_updated_at = datetime.utcnow()
+    db.commit()
+    return {"message": f"Ambiente '{env.name}' ativado."}
+
+
+@app.delete("/me/cpi-environments/{env_id}")
+def delete_environment(
+    env_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    env = db.query(CPIEnvironment).filter(CPIEnvironment.id == env_id, CPIEnvironment.user_id == current_user.id).first()
+    if not env:
+        raise HTTPException(status_code=404, detail="Ambiente não encontrado.")
+    db.delete(env)
+    db.commit()
+    return {"message": "Ambiente removido."}
+
+
+# --- Favorites ---
+
+@app.get("/me/favorites", response_model=list[FavoriteRead])
+def list_favorites(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    return db.query(Favorite).filter(Favorite.user_id == current_user.id).all()
+
+
+@app.post("/integrations/{integration_id}/favorite")
+def toggle_favorite(
+    integration_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    integration = db.query(Integration).filter(Integration.id == integration_id, Integration.user_id == current_user.id).first()
+    if not integration:
+        raise HTTPException(status_code=404, detail="Integração não encontrada.")
+    existing = db.query(Favorite).filter(Favorite.user_id == current_user.id, Favorite.integration_id == integration_id).first()
+    if existing:
+        db.delete(existing)
+        db.commit()
+        return {"favorited": False}
+    db.add(Favorite(user_id=current_user.id, integration_id=integration_id, created_at=datetime.utcnow()))
+    db.commit()
+    return {"favorited": True}
+
+
+# --- Alert Settings ---
+
+@app.get("/me/alert-settings", response_model=AlertSettingsRead)
+def get_alert_settings(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    settings = db.query(AlertSettings).filter(AlertSettings.user_id == current_user.id).first()
+    if not settings:
+        return AlertSettingsRead(
+            id=0, enabled=0, error_rate_threshold=0.05, processing_time_threshold=1000.0,
+            smtp_port=587, has_smtp_password=False
+        )
+    return AlertSettingsRead(
+        id=settings.id,
+        enabled=settings.enabled,
+        email_to=settings.email_to,
+        error_rate_threshold=settings.error_rate_threshold,
+        processing_time_threshold=settings.processing_time_threshold,
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_user=settings.smtp_user,
+        has_smtp_password=bool(settings.smtp_password_encrypted),
+    )
+
+
+@app.put("/me/alert-settings", response_model=AlertSettingsRead)
+def update_alert_settings(
+    payload: AlertSettingsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    settings = db.query(AlertSettings).filter(AlertSettings.user_id == current_user.id).first()
+    if not settings:
+        settings = AlertSettings(user_id=current_user.id, created_at=datetime.utcnow())
+        db.add(settings)
+    settings.enabled = 1 if payload.enabled else 0
+    settings.email_to = payload.email_to
+    settings.error_rate_threshold = payload.error_rate_threshold
+    settings.processing_time_threshold = payload.processing_time_threshold
+    settings.smtp_host = payload.smtp_host
+    settings.smtp_port = payload.smtp_port
+    settings.smtp_user = payload.smtp_user
+    if payload.smtp_password:
+        settings.smtp_password_encrypted = encrypt_secret(payload.smtp_password)
+    db.commit()
+    db.refresh(settings)
+    return AlertSettingsRead(
+        id=settings.id,
+        enabled=settings.enabled,
+        email_to=settings.email_to,
+        error_rate_threshold=settings.error_rate_threshold,
+        processing_time_threshold=settings.processing_time_threshold,
+        smtp_host=settings.smtp_host,
+        smtp_port=settings.smtp_port,
+        smtp_user=settings.smtp_user,
+        has_smtp_password=bool(settings.smtp_password_encrypted),
+    )
+
+
+# --- Sync Schedule ---
+
+@app.get("/me/sync-schedule", response_model=SyncScheduleRead)
+def get_sync_schedule(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    schedule = db.query(SyncSchedule).filter(SyncSchedule.user_id == current_user.id).first()
+    if not schedule:
+        return SyncScheduleRead(id=0, enabled=0, hour=6)
+    return schedule
+
+
+@app.put("/me/sync-schedule", response_model=SyncScheduleRead)
+def update_sync_schedule(
+    payload: SyncScheduleRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    schedule = db.query(SyncSchedule).filter(SyncSchedule.user_id == current_user.id).first()
+    if not schedule:
+        schedule = SyncSchedule(user_id=current_user.id, created_at=datetime.utcnow())
+        db.add(schedule)
+    schedule.enabled = 1 if payload.enabled else 0
+    schedule.hour = payload.hour
+    db.commit()
+    db.refresh(schedule)
+    _reload_scheduler()
+    return schedule
 
 
 @app.get("/")

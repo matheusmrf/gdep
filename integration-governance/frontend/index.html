@@ -453,9 +453,6 @@
                             <select id="platformFilter">
                                 <option value="">Todas</option>
                                 <option value="CPI">CPI</option>
-                                <option value="MuleSoft">MuleSoft</option>
-                                <option value="Kafka">Kafka</option>
-                                <option value="API Gateway">API Gateway</option>
                             </select>
                         </label>
                         <label>Período
@@ -475,6 +472,12 @@
                         </label>
                         <label>Score mínimo
                             <input id="minScoreFilter" type="number" min="0" max="100" step="1" />
+                        </label>
+                        <label>Favoritos
+                            <select id="favoritesFilter">
+                                <option value="">Todos</option>
+                                <option value="1">Somente favoritos</option>
+                            </select>
                         </label>
                         <label>Por página
                             <select id="pageSizeSelect">
@@ -516,6 +519,7 @@
                         <table>
                             <thead>
                                 <tr>
+                                    <th>⭐</th>
                                     <th>Nome</th>
                                     <th>Plataforma</th>
                                     <th>Origem</th>
@@ -546,38 +550,110 @@
                 <section class="panel">
                     <div class="panel-header">
                         <div>
-                            <div class="eyebrow">Configurações Gerais</div>
-                            <h2>Credenciais do CPI</h2>
-                            <p class="subtle">Essas credenciais ficam associadas somente à sua conta e são usadas na sincronização.</p>
+                            <div class="eyebrow">Configurações</div>
+                            <h2>Conta &amp; Integrações</h2>
                         </div>
                     </div>
-                    <form id="settingsForm">
-                        <label>Host do CPI
-                            <input type="text" id="settingsHost" placeholder="l400231-tmn.hci.br1.hana.ondemand.com" required />
-                        </label>
-                        <label>Usuário do CPI
-                            <input type="text" id="settingsUsername" required />
-                        </label>
-                        <label>Senha do CPI
-                            <input type="password" id="settingsPassword" placeholder="Informe para salvar ou atualizar" required />
-                        </label>
-                        <label>Tenant ID
-                            <input type="text" id="settingsTenantId" required />
-                        </label>
-                        <div class="action-row">
-                            <button class="primary" type="submit">Salvar credenciais</button>
-                            <button class="secondary" type="button" id="syncFromSettingsButton">Salvar e sincronizar</button>
+
+                    <!-- Settings tabs -->
+                    <div class="tabs" id="settingsTabs">
+                        <button class="tab active" data-tab="creds">Credenciais CPI</button>
+                        <button class="tab" data-tab="envs">Ambientes</button>
+                        <button class="tab" data-tab="schedule">Sincronização Auto</button>
+                        <button class="tab" data-tab="alerts">Alertas por E-mail</button>
+                    </div>
+
+                    <!-- Credenciais CPI -->
+                    <div id="settingsTab-creds">
+                        <p class="subtle">Credenciais ativas. Associadas somente à sua conta e cifradas no servidor.</p>
+                        <form id="settingsForm">
+                            <label>Host do CPI
+                                <input type="text" id="settingsHost" placeholder="l400231-tmn.hci.br1.hana.ondemand.com" required />
+                            </label>
+                            <label>Usuário do CPI
+                                <input type="text" id="settingsUsername" required />
+                            </label>
+                            <label>Senha do CPI
+                                <input type="password" id="settingsPassword" placeholder="Informe para salvar ou atualizar" required />
+                            </label>
+                            <label>Tenant ID
+                                <input type="text" id="settingsTenantId" required />
+                            </label>
+                            <div class="action-row">
+                                <button class="primary" type="submit">Salvar credenciais</button>
+                                <button class="secondary" type="button" id="syncFromSettingsButton">Salvar e sincronizar</button>
+                            </div>
+                        </form>
+                        <p class="status" id="settingsStatus"></p>
+                    </div>
+
+                    <!-- Ambientes (Prod / QA / Sandbox) -->
+                    <div id="settingsTab-envs" class="hidden">
+                        <p class="subtle">Gerencie múltiplos ambientes. Ativar um ambiente aplica as credenciais ao CPI principal.</p>
+                        <div id="envList" style="margin-bottom:16px;display:grid;gap:10px;"></div>
+                        <button class="secondary" id="addEnvButton">+ Adicionar ambiente</button>
+                        <div id="envForm" class="hidden" style="margin-top:16px;border:1px solid var(--line);border-radius:16px;padding:16px;">
+                            <h3 style="margin-bottom:12px;">Novo Ambiente</h3>
+                            <label>Nome (ex: Produção)
+                                <input type="text" id="envName" />
+                            </label>
+                            <label>Tipo
+                                <select id="envType">
+                                    <option value="prod">Produção</option>
+                                    <option value="qa">QA</option>
+                                    <option value="sandbox">Sandbox</option>
+                                </select>
+                            </label>
+                            <label>Host CPI <input type="text" id="envHost" /></label>
+                            <label>Usuário <input type="text" id="envUser" /></label>
+                            <label>Senha <input type="password" id="envPass" /></label>
+                            <label>Tenant ID <input type="text" id="envTenant" /></label>
+                            <div class="action-row">
+                                <button class="primary" id="saveEnvButton">Salvar ambiente</button>
+                                <button class="secondary" id="cancelEnvButton">Cancelar</button>
+                            </div>
                         </div>
-                    </form>
-                    <p class="status" id="settingsStatus"></p>
-                    <div class="idea">
-                        <strong>Ideias para evoluir esta área</strong>
-                        <ul>
-                            <li>separar ambientes Produção, QA e Sandbox por usuário</li>
-                            <li>agendar sincronização automática diária</li>
-                            <li>criar favoritos para integrações críticas</li>
-                            <li>disparar alertas por e-mail quando erro ou tempo exceder limite</li>
-                        </ul>
+                        <p class="status" id="envStatus"></p>
+                    </div>
+
+                    <!-- Sincronização automática -->
+                    <div id="settingsTab-schedule" class="hidden">
+                        <p class="subtle">Sincronize o CPI automaticamente todos os dias no horário configurado (UTC).</p>
+                        <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                            <input type="checkbox" id="scheduleEnabled" style="width:18px;height:18px;border-radius:4px;" />
+                            Habilitar sincronização automática diária
+                        </label>
+                        <label>Hora (UTC, 0–23)
+                            <input type="number" id="scheduleHour" min="0" max="23" value="6" style="max-width:100px;" />
+                        </label>
+                        <button class="primary" id="saveScheduleButton">Salvar agendamento</button>
+                        <p class="status" id="scheduleStatus"></p>
+                        <p class="subtle" id="scheduleLastRun"></p>
+                    </div>
+
+                    <!-- Alertas por e-mail -->
+                    <div id="settingsTab-alerts" class="hidden">
+                        <p class="subtle">Receba um e-mail quando uma integração ultrapassar os limiares de erro ou tempo após a sincronização.</p>
+                        <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+                            <input type="checkbox" id="alertEnabled" style="width:18px;height:18px;border-radius:4px;" />
+                            Habilitar alertas por e-mail
+                        </label>
+                        <label>Enviar para (e-mail)
+                            <input type="email" id="alertEmailTo" placeholder="equipe@empresa.com" />
+                        </label>
+                        <label>Limiar de taxa de erro (%)
+                            <input type="number" id="alertErrorRate" min="0" max="100" step="0.1" value="5" style="max-width:120px;" />
+                        </label>
+                        <label>Limiar de tempo médio (ms)
+                            <input type="number" id="alertProcessingTime" min="0" step="100" value="1000" style="max-width:120px;" />
+                        </label>
+                        <h3 style="margin:16px 0 8px;">Configuração SMTP</h3>
+                        <label>Host SMTP <input type="text" id="alertSmtpHost" placeholder="smtp.gmail.com" /></label>
+                        <label>Porta SMTP <input type="number" id="alertSmtpPort" value="587" style="max-width:100px;" /></label>
+                        <label>Usuário SMTP <input type="text" id="alertSmtpUser" /></label>
+                        <label>Senha SMTP <input type="password" id="alertSmtpPass" placeholder="Informe para atualizar" /></label>
+                        <button class="primary" id="saveAlertButton">Salvar configuração de alertas</button>
+                        <p class="status" id="alertStatus"></p>
                     </div>
                 </section>
             </section>
@@ -623,6 +699,7 @@
         const searchInput = document.getElementById("searchInput");
         const criticalityFilter = document.getElementById("criticalityFilter");
         const platformFilter = document.getElementById("platformFilter");
+        const favoritesFilter = document.getElementById("favoritesFilter");
         const datePresetFilter = document.getElementById("datePresetFilter");
         const startDateFilter = document.getElementById("startDateFilter");
         const endDateFilter = document.getElementById("endDateFilter");
@@ -641,6 +718,7 @@
         let currentSettings = null;
         let currentPage = 1;
         let currentTotal = 0;
+        let favoriteIds = new Set();
 
         const criticalityStyle = {
             "Crítica": "badge",
@@ -657,27 +735,15 @@
         async function api(path, options = {}) {
             const response = await fetch(`${apiBase}${path}`, {
                 credentials: "same-origin",
-                headers: {
-                    "Content-Type": "application/json",
-                    ...(options.headers || {})
-                },
+                headers: { "Content-Type": "application/json", ...(options.headers || {}) },
                 ...options
             });
-
-            if (response.status === 401) {
-                showAuth();
-                throw new Error("Sua sessão expirou.");
-            }
-
+            if (response.status === 401) { showAuth(); throw new Error("Sua sessão expirou."); }
             if (!response.ok) {
                 const payload = await response.json().catch(() => ({}));
                 throw new Error(payload.detail || `Erro ${response.status}`);
             }
-
-            if (response.status === 204) {
-                return null;
-            }
-
+            if (response.status === 204) return null;
             return response.json();
         }
 
@@ -702,14 +768,8 @@
 
         function metricValue(item, field, formatter) {
             const unavailable = item.external_source === "CPI" &&
-                item.monthly_volume === 0 &&
-                item.error_count === 0 &&
-                item.avg_processing_time === 0;
-
-            if (unavailable && ["monthly_volume", "error_rate", "avg_processing_time"].includes(field)) {
-                return "N/D";
-            }
-
+                item.monthly_volume === 0 && item.error_count === 0 && item.avg_processing_time === 0;
+            if (unavailable && ["monthly_volume", "error_rate", "avg_processing_time"].includes(field)) return "N/D";
             return formatter(item[field]);
         }
 
@@ -721,10 +781,7 @@
                 ["Erros", formatNumber(summary.total_error_count)]
             ];
             metricCards.innerHTML = cards.map(([label, value]) => `
-                <article class="stat-card">
-                    <strong>${value}</strong>
-                    <span>${label}</span>
-                </article>
+                <article class="stat-card"><strong>${value}</strong><span>${label}</span></article>
             `).join("");
         }
 
@@ -733,7 +790,6 @@
                 alertList.innerHTML = `<div class="idea">Nenhum alerta relevante para a sua conta agora.</div>`;
                 return;
             }
-
             alertList.innerHTML = alerts.map((alert) => `
                 <article class="alert-item">
                     <strong>${alert.integration_name}</strong><br />
@@ -760,18 +816,37 @@
             });
         }
 
+        async function toggleFavorite(id) {
+            const result = await api(`/integrations/${id}/favorite`, { method: "POST" });
+            if (result.favorited) favoriteIds.add(id); else favoriteIds.delete(id);
+            renderTableFavoriteIcons();
+        }
+
+        function renderTableFavoriteIcons() {
+            document.querySelectorAll("[data-fav-id]").forEach(btn => {
+                const id = Number(btn.dataset.favId);
+                btn.textContent = favoriteIds.has(id) ? "⭐" : "☆";
+                btn.title = favoriteIds.has(id) ? "Remover favorito" : "Adicionar aos favoritos";
+            });
+        }
+
         function renderTable(data, total, skip, limit) {
             lastIntegrations = data;
             currentTotal = total;
             tableBody.innerHTML = data.map((item) => `
                 <tr>
+                    <td data-label="Fav" class="cell-number">
+                        <button data-fav-id="${item.id}" onclick="toggleFavorite(${item.id})" style="background:none;border:none;cursor:pointer;font-size:1.1rem;padding:0;">
+                            ${favoriteIds.has(item.id) ? "⭐" : "☆"}
+                        </button>
+                    </td>
                     <td data-label="Nome" class="cell-text">${item.name}</td>
                     <td data-label="Plataforma" class="cell-text">${item.platform}</td>
                     <td data-label="Origem" class="cell-text">${item.source_system}</td>
                     <td data-label="Destino" class="cell-text">${item.target_system}</td>
                     <td data-label="Volume" class="cell-number">${metricValue(item, "monthly_volume", formatNumber)}</td>
-                    <td data-label="Erro" class="cell-number">${metricValue(item, "error_rate", (value) => `${(value * 100).toFixed(2)}%`)}</td>
-                    <td data-label="Tempo" class="cell-number">${metricValue(item, "avg_processing_time", (value) => `${value.toFixed(2)} ms`)}</td>
+                    <td data-label="Erro" class="cell-number">${metricValue(item, "error_rate", (v) => `${(v * 100).toFixed(2)}%`)}</td>
+                    <td data-label="Tempo" class="cell-number">${metricValue(item, "avg_processing_time", (v) => `${v.toFixed(0)} ms`)}</td>
                     <td data-label="Score" class="cell-number">${item.score.toFixed(2)}</td>
                     <td data-label="Criticidade" class="cell-text"><span class="${criticalityStyle[item.criticality]}">${item.criticality}</span></td>
                 </tr>
@@ -788,13 +863,15 @@
         }
 
         function hasConfiguredCPI() {
-            return Boolean(
-                currentSettings &&
-                currentSettings.cpi_host &&
-                currentSettings.cpi_username &&
-                currentSettings.cpi_tenant_id &&
-                currentSettings.has_password
-            );
+            return Boolean(currentSettings && currentSettings.cpi_host && currentSettings.cpi_username &&
+                currentSettings.cpi_tenant_id && currentSettings.has_password);
+        }
+
+        async function loadFavorites() {
+            try {
+                const favs = await api("/me/favorites");
+                favoriteIds = new Set(favs.map(f => f.integration_id));
+            } catch (_) { favoriteIds = new Set(); }
         }
 
         async function saveSettings() {
@@ -804,11 +881,7 @@
                 cpi_password: document.getElementById("settingsPassword").value,
                 cpi_tenant_id: document.getElementById("settingsTenantId").value
             };
-
-            const saved = await api("/me/cpi-settings", {
-                method: "PUT",
-                body: JSON.stringify(payload)
-            });
+            const saved = await api("/me/cpi-settings", { method: "PUT", body: JSON.stringify(payload) });
             currentSettings = saved;
             document.getElementById("settingsPassword").value = "";
             return saved;
@@ -823,11 +896,9 @@
             if (endDateFilter.value) params.set("end_date", endDateFilter.value);
             if (minScoreFilter.value) params.set("min_score", minScoreFilter.value);
             const limit = Number(pageSizeSelect.value);
-            const skip = (currentPage - 1) * limit;
             params.set("limit", String(limit));
-            params.set("skip", String(skip));
-            const query = params.toString();
-            return query ? `?${query}` : "";
+            params.set("skip", String((currentPage - 1) * limit));
+            return params.toString() ? `?${params}` : "";
         }
 
         async function loadDashboard() {
@@ -838,17 +909,21 @@
                     api(`/integrations${buildQuery()}`),
                     api("/alerts")
                 ]);
+
+                // Client-side favorites filter
+                let items = integrationsPage.items;
+                let total = integrationsPage.total;
+                if (favoritesFilter.value === "1") {
+                    items = items.filter(i => favoriteIds.has(i.id));
+                    total = items.length;
+                }
+
                 renderMetrics(summary);
                 renderChart(summary.criticality_distribution);
-                renderTable(
-                    integrationsPage.items,
-                    integrationsPage.total,
-                    integrationsPage.skip,
-                    integrationsPage.limit
-                );
+                renderTable(items, total, integrationsPage.skip, integrationsPage.limit);
                 renderAlerts(alerts.alerts);
                 syncBanner.classList.toggle("open", summary.total_integrations === 0 && hasConfiguredCPI());
-                setStatus(statusText, "Dados carregados com sucesso.");
+                setStatus(statusText, "Dados carregados.");
             } catch (error) {
                 setStatus(statusText, error.message, true);
             }
@@ -870,25 +945,99 @@
             }
         }
 
+        async function loadEnvironments() {
+            const list = document.getElementById("envList");
+            try {
+                const envs = await api("/me/cpi-environments");
+                if (!envs.length) {
+                    list.innerHTML = `<div class="subtle">Nenhum ambiente cadastrado.</div>`;
+                    return;
+                }
+                const typeLabel = { prod: "Produção", qa: "QA", sandbox: "Sandbox" };
+                list.innerHTML = envs.map(e => `
+                    <div style="display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:14px;padding:12px 16px;background:${e.is_active ? "rgba(15,76,129,0.07)" : "#fff"}">
+                        <div>
+                            <strong>${e.name}</strong>
+                            <span class="subtle" style="margin-left:8px;">${typeLabel[e.environment_type] || e.environment_type}</span>
+                            ${e.is_active ? `<span class="badge low" style="margin-left:8px;">Ativo</span>` : ""}
+                            <div class="subtle" style="font-size:0.82rem;">${e.cpi_host || ""} · ${e.cpi_username || ""}</div>
+                        </div>
+                        <div style="display:flex;gap:8px;">
+                            ${!e.is_active ? `<button class="secondary" onclick="activateEnv(${e.id})">Ativar</button>` : ""}
+                            <button class="secondary" onclick="deleteEnv(${e.id})" style="color:var(--accent)">Remover</button>
+                        </div>
+                    </div>
+                `).join("");
+            } catch (e) {
+                list.innerHTML = `<div class="subtle">Erro ao carregar ambientes.</div>`;
+            }
+        }
+
+        async function activateEnv(id) {
+            try {
+                await api(`/me/cpi-environments/${id}/activate`, { method: "PUT" });
+                await Promise.all([loadEnvironments(), loadSettings()]);
+                setStatus(document.getElementById("envStatus"), "Ambiente ativado e credenciais atualizadas.");
+            } catch (e) {
+                setStatus(document.getElementById("envStatus"), e.message, true);
+            }
+        }
+
+        async function deleteEnv(id) {
+            if (!confirm("Remover este ambiente?")) return;
+            try {
+                await api(`/me/cpi-environments/${id}`, { method: "DELETE" });
+                await loadEnvironments();
+            } catch (e) {
+                setStatus(document.getElementById("envStatus"), e.message, true);
+            }
+        }
+
+        async function loadSchedule() {
+            try {
+                const s = await api("/me/sync-schedule");
+                document.getElementById("scheduleEnabled").checked = s.enabled === 1;
+                document.getElementById("scheduleHour").value = s.hour;
+                const lastRunEl = document.getElementById("scheduleLastRun");
+                lastRunEl.textContent = s.last_run
+                    ? `Última execução: ${new Date(s.last_run).toLocaleString("pt-BR")}`
+                    : "";
+            } catch (_) {}
+        }
+
+        async function loadAlertSettings() {
+            try {
+                const s = await api("/me/alert-settings");
+                document.getElementById("alertEnabled").checked = s.enabled === 1;
+                document.getElementById("alertEmailTo").value = s.email_to || "";
+                document.getElementById("alertErrorRate").value = (s.error_rate_threshold * 100).toFixed(1);
+                document.getElementById("alertProcessingTime").value = s.processing_time_threshold;
+                document.getElementById("alertSmtpHost").value = s.smtp_host || "";
+                document.getElementById("alertSmtpPort").value = s.smtp_port;
+                document.getElementById("alertSmtpUser").value = s.smtp_user || "";
+            } catch (_) {}
+        }
+
         async function boot() {
             try {
                 const me = await api("/me");
                 welcomeUser.textContent = `${me.name} · ${me.email}`;
                 showApp();
                 showSection("dashboard");
-                await Promise.all([loadDashboard(), loadSettings()]);
+                await Promise.all([loadFavorites(), loadSettings()]);
+                await loadDashboard();
             } catch (_) {
                 showAuth();
             }
         }
 
+        // Auth tabs
         document.getElementById("loginTab").addEventListener("click", () => {
             document.getElementById("loginTab").classList.add("active");
             document.getElementById("registerTab").classList.remove("active");
             document.getElementById("loginForm").classList.remove("hidden");
             document.getElementById("registerForm").classList.add("hidden");
         });
-
         document.getElementById("registerTab").addEventListener("click", () => {
             document.getElementById("registerTab").classList.add("active");
             document.getElementById("loginTab").classList.remove("active");
@@ -896,39 +1045,30 @@
             document.getElementById("loginForm").classList.add("hidden");
         });
 
+        // Auth forms
         document.getElementById("loginForm").addEventListener("submit", async (event) => {
             event.preventDefault();
             try {
-                await api("/auth/login", {
-                    method: "POST",
-                    body: JSON.stringify({
-                        email: document.getElementById("loginEmail").value,
-                        password: document.getElementById("loginPassword").value
-                    })
-                });
+                await api("/auth/login", { method: "POST", body: JSON.stringify({
+                    email: document.getElementById("loginEmail").value,
+                    password: document.getElementById("loginPassword").value
+                })});
                 setStatus(authStatus, "Login realizado.");
                 await boot();
-            } catch (error) {
-                setStatus(authStatus, error.message, true);
-            }
+            } catch (error) { setStatus(authStatus, error.message, true); }
         });
 
         document.getElementById("registerForm").addEventListener("submit", async (event) => {
             event.preventDefault();
             try {
-                await api("/auth/register", {
-                    method: "POST",
-                    body: JSON.stringify({
-                        name: document.getElementById("registerName").value,
-                        email: document.getElementById("registerEmail").value,
-                        password: document.getElementById("registerPassword").value
-                    })
-                });
+                await api("/auth/register", { method: "POST", body: JSON.stringify({
+                    name: document.getElementById("registerName").value,
+                    email: document.getElementById("registerEmail").value,
+                    password: document.getElementById("registerPassword").value
+                })});
                 setStatus(authStatus, "Conta criada com sucesso.");
                 await boot();
-            } catch (error) {
-                setStatus(authStatus, error.message, true);
-            }
+            } catch (error) { setStatus(authStatus, error.message, true); }
         });
 
         document.getElementById("logoutButton").addEventListener("click", async () => {
@@ -939,17 +1079,27 @@
         document.getElementById("dashboardNav").addEventListener("click", () => showSection("dashboard"));
         document.getElementById("settingsNav").addEventListener("click", async () => {
             showSection("settings");
-            await loadSettings();
+            await Promise.all([loadSettings(), loadEnvironments(), loadSchedule(), loadAlertSettings()]);
         });
 
+        // Settings tabs
+        document.getElementById("settingsTabs").addEventListener("click", (e) => {
+            const btn = e.target.closest("[data-tab]");
+            if (!btn) return;
+            document.querySelectorAll("#settingsTabs .tab").forEach(t => t.classList.remove("active"));
+            btn.classList.add("active");
+            ["creds", "envs", "schedule", "alerts"].forEach(tab => {
+                document.getElementById(`settingsTab-${tab}`).classList.toggle("hidden", tab !== btn.dataset.tab);
+            });
+        });
+
+        // CPI credentials form
         document.getElementById("settingsForm").addEventListener("submit", async (event) => {
             event.preventDefault();
             try {
                 await saveSettings();
                 setStatus(settingsStatus, "Credenciais salvas com sucesso.");
-            } catch (error) {
-                setStatus(settingsStatus, error.message, true);
-            }
+            } catch (error) { setStatus(settingsStatus, error.message, true); }
         });
 
         document.getElementById("syncFromSettingsButton").addEventListener("click", async () => {
@@ -957,27 +1107,77 @@
                 setStatus(settingsStatus, "Salvando credenciais...");
                 await saveSettings();
                 setStatus(settingsStatus, "Sincronizando CPI...");
-                await api("/integrations/sync-cpi", {
-                    method: "POST",
-                    body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 100 })
-                });
+                await api("/integrations/sync-cpi", { method: "POST", body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 100 }) });
                 setStatus(settingsStatus, "Credenciais salvas e CPI sincronizado.");
                 showSection("dashboard");
                 await loadDashboard();
-            } catch (error) {
-                setStatus(settingsStatus, error.message, true);
-            }
+            } catch (error) { setStatus(settingsStatus, error.message, true); }
         });
 
+        // Environments
+        document.getElementById("addEnvButton").addEventListener("click", () => {
+            document.getElementById("envForm").classList.remove("hidden");
+        });
+        document.getElementById("cancelEnvButton").addEventListener("click", () => {
+            document.getElementById("envForm").classList.add("hidden");
+        });
+        document.getElementById("saveEnvButton").addEventListener("click", async () => {
+            const envStatus = document.getElementById("envStatus");
+            try {
+                await api("/me/cpi-environments", { method: "POST", body: JSON.stringify({
+                    name: document.getElementById("envName").value,
+                    environment_type: document.getElementById("envType").value,
+                    cpi_host: document.getElementById("envHost").value,
+                    cpi_username: document.getElementById("envUser").value,
+                    cpi_password: document.getElementById("envPass").value,
+                    cpi_tenant_id: document.getElementById("envTenant").value,
+                })});
+                document.getElementById("envForm").classList.add("hidden");
+                setStatus(envStatus, "Ambiente salvo.");
+                await loadEnvironments();
+            } catch (e) { setStatus(envStatus, e.message, true); }
+        });
+
+        // Schedule
+        document.getElementById("saveScheduleButton").addEventListener("click", async () => {
+            const scheduleStatus = document.getElementById("scheduleStatus");
+            try {
+                await api("/me/sync-schedule", { method: "PUT", body: JSON.stringify({
+                    enabled: document.getElementById("scheduleEnabled").checked,
+                    hour: Number(document.getElementById("scheduleHour").value),
+                })});
+                setStatus(scheduleStatus, "Agendamento salvo.");
+                await loadSchedule();
+            } catch (e) { setStatus(scheduleStatus, e.message, true); }
+        });
+
+        // Alert settings
+        document.getElementById("saveAlertButton").addEventListener("click", async () => {
+            const alertStatus = document.getElementById("alertStatus");
+            try {
+                await api("/me/alert-settings", { method: "PUT", body: JSON.stringify({
+                    enabled: document.getElementById("alertEnabled").checked,
+                    email_to: document.getElementById("alertEmailTo").value || null,
+                    error_rate_threshold: Number(document.getElementById("alertErrorRate").value) / 100,
+                    processing_time_threshold: Number(document.getElementById("alertProcessingTime").value),
+                    smtp_host: document.getElementById("alertSmtpHost").value || null,
+                    smtp_port: Number(document.getElementById("alertSmtpPort").value),
+                    smtp_user: document.getElementById("alertSmtpUser").value || null,
+                    smtp_password: document.getElementById("alertSmtpPass").value || null,
+                })});
+                document.getElementById("alertSmtpPass").value = "";
+                setStatus(alertStatus, "Configurações de alerta salvas.");
+            } catch (e) { setStatus(alertStatus, e.message, true); }
+        });
+
+        // Dashboard controls
         document.getElementById("refreshButton").addEventListener("click", loadDashboard);
 
         document.getElementById("syncButton").addEventListener("click", async () => {
             try {
                 setStatus(statusText, "Sincronizando CPI...");
-                await api("/integrations/sync-cpi", {
-                    method: "POST",
-                    body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 100 })
-                });
+                await api("/integrations/sync-cpi", { method: "POST", body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 100 }) });
+                await loadFavorites();
                 await loadDashboard();
                 setStatus(statusText, "Sincronização concluída.");
             } catch (error) {
@@ -986,36 +1186,19 @@
             }
         });
 
-        [searchInput, criticalityFilter, platformFilter, minScoreFilter, pageSizeSelect, startDateFilter, endDateFilter].forEach((element) => {
-            element.addEventListener("input", () => {
-                currentPage = 1;
-                loadDashboard();
-            });
-            element.addEventListener("change", () => {
-                currentPage = 1;
-                loadDashboard();
-            });
+        [searchInput, criticalityFilter, platformFilter, favoritesFilter, minScoreFilter, pageSizeSelect, startDateFilter, endDateFilter].forEach((element) => {
+            element.addEventListener("input", () => { currentPage = 1; loadDashboard(); });
+            element.addEventListener("change", () => { currentPage = 1; loadDashboard(); });
         });
 
-        datePresetFilter.addEventListener("change", () => {
-            applyDatePreset();
-            currentPage = 1;
-            loadDashboard();
-        });
+        datePresetFilter.addEventListener("change", () => { applyDatePreset(); currentPage = 1; loadDashboard(); });
 
         prevPageButton.addEventListener("click", async () => {
-            if (currentPage > 1) {
-                currentPage -= 1;
-                await loadDashboard();
-            }
+            if (currentPage > 1) { currentPage -= 1; await loadDashboard(); }
         });
-
         nextPageButton.addEventListener("click", async () => {
             const totalPages = Math.max(1, Math.ceil(currentTotal / Number(pageSizeSelect.value)));
-            if (currentPage < totalPages) {
-                currentPage += 1;
-                await loadDashboard();
-            }
+            if (currentPage < totalPages) { currentPage += 1; await loadDashboard(); }
         });
 
         document.getElementById("criticalityHelpButton").addEventListener("click", () => {
@@ -1025,28 +1208,23 @@
             document.getElementById("criticalityModal").classList.remove("open");
         });
         document.getElementById("criticalityModal").addEventListener("click", (event) => {
-            if (event.target.id === "criticalityModal") {
-                event.currentTarget.classList.remove("open");
-            }
+            if (event.target.id === "criticalityModal") event.currentTarget.classList.remove("open");
         });
+
+        function applyDatePreset() {
+            const preset = datePresetFilter.value;
+            if (!preset) { startDateFilter.value = ""; endDateFilter.value = ""; return; }
+            if (preset !== "custom") {
+                const today = new Date();
+                const start = new Date();
+                start.setDate(today.getDate() - Number(preset));
+                const toIso = (d) => d.toISOString().split("T")[0];
+                startDateFilter.value = toIso(start);
+                endDateFilter.value = toIso(today);
+            }
+        }
 
         boot();
     </script>
 </body>
 </html>
-        function applyDatePreset() {
-            const preset = datePresetFilter.value;
-            if (!preset) {
-                startDateFilter.value = "";
-                endDateFilter.value = "";
-                return;
-            }
-            if (preset !== "custom") {
-                const today = new Date();
-                const start = new Date();
-                start.setDate(today.getDate() - Number(preset));
-                const toIso = (date) => date.toISOString().split("T")[0];
-                startDateFilter.value = toIso(start);
-                endDateFilter.value = toIso(today);
-            }
-        }

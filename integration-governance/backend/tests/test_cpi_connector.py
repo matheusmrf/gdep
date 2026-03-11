@@ -162,7 +162,7 @@ class TestCPIConnector:
 
         assert len(logs) == 2
         assert logs[0]["artifact_id"] == "flow_a"
-        assert logs[0]["processing_time"] == 1.0
+        assert logs[0]["processing_time"] == 1000.0  # ms: /Date(2000)/ - /Date(1000)/ = 1000 ms
         assert logs[1]["artifact_name"] == "Flow B"
         assert logs[1]["status"] == "FAILED"
 

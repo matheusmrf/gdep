@@ -81,6 +81,7 @@ def sync_schema():
 
     if "integrations" not in table_names:
         ensure_indexes()
+        _ensure_new_tables(inspector, inspector.get_table_names())
         return
 
     existing_columns = {column["name"] for column in inspector.get_columns("integrations")}
@@ -105,6 +106,69 @@ def sync_schema():
                 connection.execute(text(statement))
 
     ensure_indexes()
+    _ensure_new_tables(inspector, inspector.get_table_names())
+
+
+def _ensure_new_tables(inspector, table_names):
+    if "cpi_environments" not in table_names:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS cpi_environments (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    name VARCHAR NOT NULL,
+                    environment_type VARCHAR NOT NULL DEFAULT 'prod',
+                    cpi_host VARCHAR,
+                    cpi_username VARCHAR,
+                    cpi_password_encrypted VARCHAR,
+                    cpi_tenant_id VARCHAR,
+                    is_active INTEGER NOT NULL DEFAULT 0,
+                    created_at DATETIME NOT NULL
+                )
+            """))
+
+    if "favorites" not in table_names:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS favorites (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    integration_id INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    UNIQUE (user_id, integration_id)
+                )
+            """))
+
+    if "alert_settings" not in table_names:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS alert_settings (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL UNIQUE,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    email_to VARCHAR,
+                    error_rate_threshold REAL NOT NULL DEFAULT 0.05,
+                    processing_time_threshold REAL NOT NULL DEFAULT 1000.0,
+                    smtp_host VARCHAR,
+                    smtp_port INTEGER NOT NULL DEFAULT 587,
+                    smtp_user VARCHAR,
+                    smtp_password_encrypted VARCHAR,
+                    created_at DATETIME NOT NULL
+                )
+            """))
+
+    if "sync_schedules" not in table_names:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS sync_schedules (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL UNIQUE,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    hour INTEGER NOT NULL DEFAULT 6,
+                    last_run DATETIME,
+                    created_at DATETIME NOT NULL
+                )
+            """))
 
 
 def ensure_indexes():

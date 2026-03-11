@@ -8,4 +8,4 @@ pytest
 httpx
 python-dotenv
 cryptography
-email-validator
+apscheduler

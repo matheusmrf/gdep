@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Index, Integer, String, UniqueConstraint
 
 from backend.database import Base
 
@@ -71,3 +71,58 @@ class Integration(Base):
         Index("idx_integrations_tenant_score", "tenant_id", "score"),
         Index("idx_integrations_user_score", "user_id", "score"),
     )
+
+
+class CPIEnvironment(Base):
+    __tablename__ = "cpi_environments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    name = Column(String, nullable=False)
+    environment_type = Column(String, nullable=False, default="prod")  # prod, qa, sandbox
+    cpi_host = Column(String, nullable=True)
+    cpi_username = Column(String, nullable=True)
+    cpi_password_encrypted = Column(String, nullable=True)
+    cpi_tenant_id = Column(String, nullable=True)
+    is_active = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class Favorite(Base):
+    __tablename__ = "favorites"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    integration_id = Column(Integer, ForeignKey("integrations.id"), nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "integration_id", name="uq_favorite_user_integration"),
+    )
+
+
+class AlertSettings(Base):
+    __tablename__ = "alert_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    enabled = Column(Integer, nullable=False, default=0)
+    email_to = Column(String, nullable=True)
+    error_rate_threshold = Column(Float, nullable=False, default=0.05)
+    processing_time_threshold = Column(Float, nullable=False, default=1000.0)
+    smtp_host = Column(String, nullable=True)
+    smtp_port = Column(Integer, nullable=False, default=587)
+    smtp_user = Column(String, nullable=True)
+    smtp_password_encrypted = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class SyncSchedule(Base):
+    __tablename__ = "sync_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    enabled = Column(Integer, nullable=False, default=0)
+    hour = Column(Integer, nullable=False, default=6)
+    last_run = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

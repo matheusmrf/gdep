@@ -105,3 +105,72 @@ class AlertItem(BaseModel):
 class AlertResponse(BaseModel):
     generated_at: datetime
     alerts: List[AlertItem]
+
+
+# --- CPIEnvironment ---
+
+class CPIEnvironmentRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+    environment_type: str = Field(default="prod")  # prod, qa, sandbox
+    cpi_host: str = Field(min_length=3, max_length=255)
+    cpi_username: str = Field(min_length=2, max_length=255)
+    cpi_password: str = Field(min_length=4, max_length=255)
+    cpi_tenant_id: str = Field(min_length=2, max_length=120)
+
+
+class CPIEnvironmentRead(ORMBaseModel):
+    id: int
+    name: str
+    environment_type: str
+    cpi_host: Optional[str] = None
+    cpi_username: Optional[str] = None
+    cpi_tenant_id: Optional[str] = None
+    is_active: int
+    created_at: datetime
+
+
+# --- Favorite ---
+
+class FavoriteRead(ORMBaseModel):
+    id: int
+    integration_id: int
+    created_at: datetime
+
+
+# --- AlertSettings ---
+
+class AlertSettingsRequest(BaseModel):
+    enabled: bool = False
+    email_to: Optional[str] = None
+    error_rate_threshold: float = Field(default=0.05, ge=0, le=1)
+    processing_time_threshold: float = Field(default=1000.0, ge=0)
+    smtp_host: Optional[str] = None
+    smtp_port: int = Field(default=587)
+    smtp_user: Optional[str] = None
+    smtp_password: Optional[str] = None
+
+
+class AlertSettingsRead(ORMBaseModel):
+    id: int
+    enabled: int
+    email_to: Optional[str] = None
+    error_rate_threshold: float
+    processing_time_threshold: float
+    smtp_host: Optional[str] = None
+    smtp_port: int
+    smtp_user: Optional[str] = None
+    has_smtp_password: bool = False
+
+
+# --- SyncSchedule ---
+
+class SyncScheduleRequest(BaseModel):
+    enabled: bool = False
+    hour: int = Field(default=6, ge=0, le=23)
+
+
+class SyncScheduleRead(ORMBaseModel):
+    id: int
+    enabled: int
+    hour: int
+    last_run: Optional[datetime] = None

@@ -87,6 +87,9 @@ Thumbs.db
 *.temp
 temp/
 
+# Sample/test data files
+MessageProcessingLogs.txt
+
 # IDE Config (user-specific)
 .vscode/settings.json
 .idea/workspace.xml

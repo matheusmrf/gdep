@@ -8,6 +8,7 @@ sobre integrações, endpoints, artefatos e métricas de desempenho.
 import logging
 import base64
 from collections import defaultdict
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -46,11 +47,22 @@ def calculate_metrics(messages: List[Dict]) -> Dict:
 
 
 def parse_odata_datetime(value: Optional[str]) -> Optional[int]:
-    if not value or not value.startswith("/Date("):
+    """Parse /Date(ms)/ or ISO8601 datetime string to epoch milliseconds."""
+    if not value:
         return None
+    # OData JSON format: /Date(1234567890)/
+    if value.startswith("/Date("):
+        try:
+            return int(value[6:].split(")")[0])
+        except ValueError:
+            return None
+    # ISO8601 format: 2026-03-02T17:40:00.406
     try:
-        return int(value[6:].split(")")[0])
-    except ValueError:
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return int(dt.timestamp() * 1000)
+    except (ValueError, TypeError):
         return None
 
 
@@ -220,6 +232,7 @@ class CPIConnector:
                 "$top": max(limit, 1),
                 "$format": "json",
                 "$filter": "Status ne 'PROCESSING'",
+                "$orderby": "LogEnd desc",
             }
 
             while True:
@@ -238,7 +251,7 @@ class CPIConnector:
 
                     start = parse_odata_datetime(msg.get("LogStart"))
                     end = parse_odata_datetime(msg.get("LogEnd"))
-                    processing_time = ((end - start) / 1000.0) if start and end and end >= start else None
+                    processing_time = float(end - start) if start and end and end >= start else None
                     messages.append(
                         {
                             "id": msg.get("MessageGuid"),
@@ -265,6 +278,41 @@ class CPIConnector:
 
         except Exception as e:
             logger.error(f"Error fetching recent message logs from CPI: {str(e)}")
+            return []
+
+    def get_messages_for_artifact(self, artifact_id: str, limit: int = 100) -> List[Dict]:
+        """Targeted MPL fetch for a specific artifact (fallback for low-frequency flows)."""
+        try:
+            url = urljoin(self.base_url, "/api/v1/MessageProcessingLogs")
+            params = {
+                "$top": limit,
+                "$format": "json",
+                "$filter": f"IntegrationArtifact/Id eq '{artifact_id}' and Status ne 'PROCESSING'",
+                "$orderby": "LogEnd desc",
+            }
+            response = self.session.get(url, params=params, verify=self.verify_ssl, timeout=30)
+            response.raise_for_status()
+            messages = []
+            for msg in response.json().get("d", {}).get("results", []):
+                artifact = msg.get("IntegrationArtifact") or {}
+                start = parse_odata_datetime(msg.get("LogStart"))
+                end = parse_odata_datetime(msg.get("LogEnd"))
+                processing_time = float(end - start) if start and end and end >= start else None
+                messages.append(
+                    {
+                        "id": msg.get("MessageGuid"),
+                        "artifact_id": artifact.get("Id"),
+                        "artifact_name": artifact.get("Name"),
+                        "integration_flow_name": msg.get("IntegrationFlowName"),
+                        "timestamp": msg.get("LogEnd") or msg.get("LogStart"),
+                        "status": msg.get("Status"),
+                        "error": msg.get("Status") == "FAILED",
+                        "processing_time": processing_time,
+                    }
+                )
+            return messages
+        except Exception as e:
+            logger.error(f"Error fetching messages for artifact {artifact_id}: {str(e)}")
             return []
 
     def get_metrics_by_artifact(self, limit: int = 500) -> Dict[str, Dict]:
