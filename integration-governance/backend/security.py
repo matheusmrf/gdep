@@ -17,7 +17,12 @@ PBKDF2_ITERATIONS = 120_000
 
 
 def _app_secret() -> bytes:
-    secret = os.getenv("APP_SECRET", "dev-only-change-me-gdep-secret")
+    secret = os.getenv("APP_SECRET", "").strip()
+    env = os.getenv("ENVIRONMENT", "development").strip().lower()
+    if env in {"production", "prod"} and not secret:
+        raise RuntimeError("APP_SECRET must be set in production.")
+    if not secret:
+        secret = "dev-only-change-me-gdep-secret"
     return secret.encode("utf-8")
 
 

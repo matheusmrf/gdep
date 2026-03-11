@@ -79,7 +79,7 @@ class SAPPOConnector:
         host: str,
         username: str,
         password: str,
-        verify_ssl: bool = False,
+        verify_ssl: bool = True,
         timeout: int = 30,
     ):
         self.base_url = normalize_po_host(host)

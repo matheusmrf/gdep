@@ -1,12 +1,21 @@
 from datetime import date, datetime, time, timedelta
+from contextlib import asynccontextmanager
+from collections import defaultdict, deque
 import logging
+import os
 from pathlib import Path
+import threading
+import time
 from typing import Dict, Optional
 import smtplib
 from email.mime.text import MIMEText
+from uuid import uuid4
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Response
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler
+except ImportError:  # pragma: no cover
+    BackgroundScheduler = None
+from fastapi import Cookie, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -59,12 +68,114 @@ from backend.security import (
 BASE_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = BASE_DIR / "frontend"
 
-app = FastAPI(title="Dashboard Governança")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if SCHEDULER_ENABLED:
+        _reload_scheduler()
+        scheduler.start()
+    try:
+        yield
+    finally:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+
+app = FastAPI(title="Dashboard Governança", lifespan=lifespan)
 Base.metadata.create_all(bind=engine)
 sync_schema()
 
-scheduler = BackgroundScheduler()
+scheduler = BackgroundScheduler() if BackgroundScheduler is not None else None
 logger = logging.getLogger(__name__)
+
+
+class _NoopScheduler:
+    def __init__(self):
+        self.running = False
+
+    def get_jobs(self):
+        return []
+
+    def start(self):
+        self.running = True
+
+    def shutdown(self, wait: bool = False):
+        self.running = False
+
+    def add_job(self, *args, **kwargs):
+        return None
+
+
+def _as_bool(value: str, default: bool) -> bool:
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+ENVIRONMENT = os.getenv("ENVIRONMENT", "development").strip().lower()
+IS_PRODUCTION = ENVIRONMENT in {"production", "prod"}
+COOKIE_SECURE = _as_bool(os.getenv("COOKIE_SECURE"), IS_PRODUCTION)
+SCHEDULER_ENABLED = _as_bool(os.getenv("SCHEDULER_ENABLED"), True)
+PO_VERIFY_SSL = _as_bool(os.getenv("PO_VERIFY_SSL"), True)
+LOGIN_RATE_LIMIT_ATTEMPTS = int(os.getenv("LOGIN_RATE_LIMIT_ATTEMPTS", "10"))
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("LOGIN_RATE_LIMIT_WINDOW_SECONDS", "60"))
+SYNC_RATE_LIMIT_ATTEMPTS = int(os.getenv("SYNC_RATE_LIMIT_ATTEMPTS", "6"))
+SYNC_RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("SYNC_RATE_LIMIT_WINDOW_SECONDS", "600"))
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", "").strip() or None
+
+_cors_env = os.getenv("CORS_ALLOWED_ORIGINS", "").strip()
+if _cors_env:
+    CORS_ALLOWED_ORIGINS = [origin.strip() for origin in _cors_env.split(",") if origin.strip()]
+else:
+    CORS_ALLOWED_ORIGINS = ["http://127.0.0.1:8000", "http://localhost:8000"]
+
+if IS_PRODUCTION:
+    if not CORS_ALLOWED_ORIGINS:
+        raise RuntimeError("CORS_ALLOWED_ORIGINS must be configured in production.")
+    insecure_origins = {
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "http://127.0.0.1",
+        "http://localhost",
+    }
+    if any(origin in insecure_origins for origin in CORS_ALLOWED_ORIGINS):
+        raise RuntimeError("CORS_ALLOWED_ORIGINS cannot include localhost in production.")
+
+if BackgroundScheduler is None:
+    logger.warning("apscheduler not installed; sync scheduler disabled for this process.")
+    SCHEDULER_ENABLED = False
+    scheduler = _NoopScheduler()
+
+
+class _InMemoryRateLimiter:
+    def __init__(self):
+        self._events = defaultdict(deque)
+        self._lock = threading.Lock()
+
+    def allow(self, key: str, limit: int, window_seconds: int) -> bool:
+        now = time.time()
+        cutoff = now - window_seconds
+        with self._lock:
+            bucket = self._events[key]
+            while bucket and bucket[0] < cutoff:
+                bucket.popleft()
+            if len(bucket) >= limit:
+                return False
+            bucket.append(now)
+            return True
+
+
+rate_limiter = _InMemoryRateLimiter()
+
+
+def _client_ip(request: Request) -> str:
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _enforce_rate_limit(key: str, limit: int, window_seconds: int):
+    if not rate_limiter.allow(key, limit, window_seconds):
+        raise HTTPException(status_code=429, detail="Muitas requisições. Tente novamente em alguns minutos.")
 
 
 def _update_schedule_last_run(db: Session, user_id: int):
@@ -106,6 +217,7 @@ def _run_daily_structure_sync_for_user(user_id: int):
                 host=user.po_host,
                 username=user.po_username,
                 password=po_decrypted,
+                verify_ssl=PO_VERIFY_SSL,
             )
             _do_sync_po(
                 po_connector,
@@ -157,6 +269,7 @@ def _run_metrics_sync_for_user(user_id: int):
                 host=user.po_host,
                 username=user.po_username,
                 password=po_decrypted,
+                verify_ssl=PO_VERIFY_SSL,
             )
             _do_sync_po(
                 po_connector,
@@ -233,19 +346,17 @@ def _send_alert_email(settings: AlertSettings, violations: list):
         pass
 
 
-@app.on_event("startup")
-def startup_event():
-    _reload_scheduler()
-    scheduler.start()
-
-
-@app.on_event("shutdown")
-def shutdown_event():
-    scheduler.shutdown(wait=False)
+@app.middleware("http")
+async def attach_request_id(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    request.state.request_id = request_id
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = request_id
+    return response
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8000", "http://localhost:8000"],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -261,17 +372,23 @@ def get_db():
 
 
 def set_session_cookie(response: Response, raw_token: str):
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=raw_token,
-        httponly=True,
-        samesite="lax",
-        secure=False,
-        max_age=60 * 60 * 12,
-    )
+    cookie_kwargs = {
+        "key": SESSION_COOKIE_NAME,
+        "value": raw_token,
+        "httponly": True,
+        "samesite": "lax",
+        "secure": COOKIE_SECURE,
+        "max_age": 60 * 60 * 12,
+    }
+    if COOKIE_DOMAIN:
+        cookie_kwargs["domain"] = COOKIE_DOMAIN
+    response.set_cookie(**cookie_kwargs)
 
 
 def clear_session_cookie(response: Response):
+    if COOKIE_DOMAIN:
+        response.delete_cookie(SESSION_COOKIE_NAME, domain=COOKIE_DOMAIN)
+        return
     response.delete_cookie(SESSION_COOKIE_NAME)
 
 
@@ -297,6 +414,10 @@ def get_current_user(
     user = db.query(User).filter(User.id == session.user_id).first()
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
+
+    # Sliding expiration to enforce inactivity timeout.
+    session.expires_at = session_expiration()
+    db.commit()
 
     return user
 
@@ -397,7 +518,11 @@ def register(payload: RegisterRequest, response: Response, db: Session = Depends
 
 
 @app.post("/auth/login", response_model=UserRead)
-def login(payload: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(payload: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    ip = _client_ip(request)
+    rate_key = f"login:{ip}:{payload.email.lower()}"
+    _enforce_rate_limit(rate_key, LOGIN_RATE_LIMIT_ATTEMPTS, LOGIN_RATE_LIMIT_WINDOW_SECONDS)
+
     user = db.query(User).filter(func.lower(User.email) == payload.email.lower()).first()
     if user is None:
         raise HTTPException(status_code=401, detail="Credenciais inválidas.")
@@ -653,9 +778,13 @@ def get_alerts(
 @app.post("/integrations/sync-cpi")
 def sync_cpi_integrations(
     payload: SyncCPIRequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    rate_key = f"sync-cpi:{current_user.id}:{_client_ip(request)}"
+    _enforce_rate_limit(rate_key, SYNC_RATE_LIMIT_ATTEMPTS, SYNC_RATE_LIMIT_WINDOW_SECONDS)
+
     decrypted_password = decrypt_secret(current_user.cpi_password_encrypted)
     if not all([current_user.cpi_host, current_user.cpi_username, decrypted_password, current_user.cpi_tenant_id]):
         raise HTTPException(
@@ -692,9 +821,13 @@ def sync_cpi_integrations(
 @app.post("/integrations/sync-po")
 def sync_po_integrations(
     payload: SyncPORequest,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    rate_key = f"sync-po:{current_user.id}:{_client_ip(request)}"
+    _enforce_rate_limit(rate_key, SYNC_RATE_LIMIT_ATTEMPTS, SYNC_RATE_LIMIT_WINDOW_SECONDS)
+
     decrypted_password = decrypt_secret(current_user.po_password_encrypted)
     if not all([current_user.po_host, current_user.po_username, decrypted_password]):
         raise HTTPException(
@@ -706,6 +839,7 @@ def sync_po_integrations(
         host=current_user.po_host,
         username=current_user.po_username,
         password=decrypted_password,
+        verify_ssl=PO_VERIFY_SSL,
     )
 
     total_synced = _do_sync_po(
@@ -1269,7 +1403,8 @@ def update_sync_schedule(
     schedule.hour = payload.hour
     db.commit()
     db.refresh(schedule)
-    _reload_scheduler()
+    if SCHEDULER_ENABLED:
+        _reload_scheduler()
     return schedule
 
 

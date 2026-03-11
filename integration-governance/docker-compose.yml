@@ -2,9 +2,9 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_PASSWORD: senha
-      POSTGRES_DB: integration_governance
-      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me_now}
+      POSTGRES_DB: ${POSTGRES_DB:-integration_governance}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
     ports:
       - "5432:5432"
     healthcheck:
@@ -21,7 +21,18 @@ services:
       dockerfile: backend/Dockerfile
     command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
     environment:
-      DATABASE_URL: postgresql+psycopg2://postgres:senha@db:5432/integration_governance
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-change_me_now}@db:5432/${POSTGRES_DB:-integration_governance}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      APP_SECRET: ${APP_SECRET:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://127.0.0.1:8000,http://localhost:8000}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-true}
+      PO_VERIFY_SSL: ${PO_VERIFY_SSL:-true}
+      LOGIN_RATE_LIMIT_ATTEMPTS: ${LOGIN_RATE_LIMIT_ATTEMPTS:-10}
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS: ${LOGIN_RATE_LIMIT_WINDOW_SECONDS:-60}
+      SYNC_RATE_LIMIT_ATTEMPTS: ${SYNC_RATE_LIMIT_ATTEMPTS:-6}
+      SYNC_RATE_LIMIT_WINDOW_SECONDS: ${SYNC_RATE_LIMIT_WINDOW_SECONDS:-600}
     ports:
       - "8000:8000"
     depends_on:
