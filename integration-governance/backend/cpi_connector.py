@@ -8,7 +8,7 @@ sobre integrações, endpoints, artefatos e métricas de desempenho.
 import logging
 import base64
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -25,6 +25,10 @@ def calculate_metrics(messages: List[Dict]) -> Dict:
             "error_rate": 0.0,
             "avg_time": 0.0,
             "has_data": False,
+            "sender": None,
+            "receiver": None,
+            "artifact_name": None,
+            "integration_flow_name": None,
         }
 
     total_messages = len(messages)
@@ -37,12 +41,23 @@ def calculate_metrics(messages: List[Dict]) -> Dict:
 
     avg_time = sum(processing_times) / len(processing_times) if processing_times else 0.0
 
+    # Pick the most common non-null sender/receiver/name
+    from collections import Counter
+
+    def most_common(values):
+        vals = [v for v in values if v]
+        return Counter(vals).most_common(1)[0][0] if vals else None
+
     return {
         "total_messages": total_messages,
         "failed": failed,
         "error_rate": failed / total_messages if total_messages else 0.0,
         "avg_time": avg_time,
         "has_data": True,
+        "sender": most_common(m.get("sender") for m in messages),
+        "receiver": most_common(m.get("receiver") for m in messages),
+        "artifact_name": most_common(m.get("artifact_name") for m in messages),
+        "integration_flow_name": most_common(m.get("integration_flow_name") for m in messages),
     }
 
 
@@ -224,14 +239,17 @@ class CPIConnector:
             logger.error(f"Error fetching endpoints for artifact {artifact_id}: {str(e)}")
             return []
 
-    def get_recent_message_processing_logs(self, limit: int = 5000) -> List[Dict]:
+    def get_recent_message_processing_logs(self, limit: int = 5000, days: int = 30) -> List[Dict]:
         try:
             url = urljoin(self.base_url, "/api/v1/MessageProcessingLogs")
             messages = []
+            since = datetime.now(timezone.utc) - timedelta(days=days)
+            since_str = since.strftime("%Y-%m-%dT%H:%M:%S")
+            # Do NOT set $top — CPI returns 1000/page with $skiptoken pagination.
+            # Controlling total via len(messages) >= limit in the loop.
             params = {
-                "$top": max(limit, 1),
                 "$format": "json",
-                "$filter": "Status ne 'PROCESSING'",
+                "$filter": f"Status ne 'PROCESSING' and LogEnd ge datetime'{since_str}'",
                 "$orderby": "LogEnd desc",
             }
 
@@ -262,6 +280,8 @@ class CPIConnector:
                             "status": msg.get("Status"),
                             "error": msg.get("Status") == "FAILED",
                             "processing_time": processing_time,
+                            "sender": msg.get("Sender") or None,
+                            "receiver": msg.get("Receiver") or None,
                         }
                     )
                     if len(messages) >= limit:
@@ -308,6 +328,8 @@ class CPIConnector:
                         "status": msg.get("Status"),
                         "error": msg.get("Status") == "FAILED",
                         "processing_time": processing_time,
+                        "sender": msg.get("Sender") or None,
+                        "receiver": msg.get("Receiver") or None,
                     }
                 )
             return messages
@@ -316,18 +338,45 @@ class CPIConnector:
             return []
 
     def get_metrics_by_artifact(self, limit: int = 500) -> Dict[str, Dict]:
-        grouped_messages = defaultdict(list)
-        for message in self.get_recent_message_processing_logs(limit=limit):
-            keys = {
-                message.get("artifact_id"),
-                message.get("artifact_name"),
-                message.get("integration_flow_name"),
-            }
-            keys = {key for key in keys if key}
-            for key in keys:
-                grouped_messages[key].append(message)
+        """
+        Returns metrics dict keyed by CANONICAL artifact_id (symbolic name from MPL).
+        Each canonical entry also includes alias keys (artifact_name, integration_flow_name)
+        so lookup by any identifier works.
+        """
+        # Group by canonical key: artifact_id first, then flow_name, then name
+        canonical_groups: Dict[str, list] = {}
+        key_to_canonical: Dict[str, str] = {}
 
-        return {key: calculate_metrics(messages) for key, messages in grouped_messages.items()}
+        for message in self.get_recent_message_processing_logs(limit=limit):
+            artifact_id = message.get("artifact_id")
+            flow_name = message.get("integration_flow_name")
+            art_name = message.get("artifact_name")
+
+            canonical = artifact_id or flow_name or art_name
+            if not canonical:
+                continue
+
+            if canonical not in canonical_groups:
+                canonical_groups[canonical] = []
+            canonical_groups[canonical].append(message)
+
+            # Register aliases → canonical
+            for alias in (artifact_id, flow_name, art_name):
+                if alias and alias not in key_to_canonical:
+                    key_to_canonical[alias] = canonical
+
+        # Compute metrics per canonical key
+        canonical_metrics = {
+            canonical: calculate_metrics(msgs)
+            for canonical, msgs in canonical_groups.items()
+        }
+
+        # Build final dict: canonical + all aliases → same metrics object
+        result: Dict[str, Dict] = {}
+        for alias, canonical in key_to_canonical.items():
+            result[alias] = canonical_metrics[canonical]
+
+        return result
 
     def health_check(self) -> bool:
         """

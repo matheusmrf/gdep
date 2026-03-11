@@ -1,6 +1,6 @@
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 import smtplib
 from email.mime.text import MIMEText
 
@@ -529,45 +529,144 @@ def sync_cpi_integrations(
 
 
 def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, include_mpl: bool, message_limit: int) -> int:
-    artifacts = connector.get_integration_artifacts()
-    bulk_metrics = connector.get_metrics_by_artifact(
-        limit=max(message_limit * 100, 2000)
-    ) if include_mpl else {}
-    total_synced = 0
-    seen_external_ids = set()
+    """
+    Sync strategy: MPL-primary.
 
-    for index, artifact in enumerate(artifacts, start=1):
-        seen_external_ids.add(artifact["id"])
+    1. Fetch bulk MessageProcessingLogs metrics (grouped by artifact).
+    2. For every artifact that has REAL message data → create/update Integration.
+    3. Also fetch artifacts from the Participant API to discover flows with no recent
+       MPL messages (deployed but idle). Those are upserted with zero metrics.
+    4. Use Sender/Receiver from MPL as source_system/target_system when available.
+    """
+    mpl_limit = max(message_limit * 100, 2000)
+    bulk_metrics = connector.get_metrics_by_artifact(limit=mpl_limit) if include_mpl else {}
+
+    # Deduplicate: keep only ONE entry per canonical artifact_id
+    seen_canonical: set = set()
+    canonical_metrics: Dict[str, Dict] = {}
+    for key, m in bulk_metrics.items():
+        flow_name = m.get("integration_flow_name") or key
+        artifact_name = m.get("artifact_name") or key
+        # canonical key = artifact_id (first non-null from message)
+        canonical = flow_name  # flow_name == artifact_id in CPI MPL
+        if canonical not in seen_canonical:
+            seen_canonical.add(canonical)
+            canonical_metrics[canonical] = m
+
+    total_synced = 0
+    seen_external_ids: set = set()
+
+    # ── PASS 1: integrations with real MPL data ──────────────────────────────
+    for canonical_id, metrics in canonical_metrics.items():
+        if not metrics.get("has_data"):
+            continue
+
+        seen_external_ids.add(canonical_id)
         existing = (
             db.query(Integration)
             .filter(
                 Integration.user_id == user.id,
-                Integration.external_id == artifact["id"],
+                Integration.external_id == canonical_id,
                 Integration.external_source == "CPI",
             )
             .first()
         )
+
+        display_name = metrics.get("artifact_name") or metrics.get("integration_flow_name") or canonical_id
+        source_system = metrics.get("sender") or "SAP CPI"
+        target_system = metrics.get("receiver") or (existing.target_system if existing else "Unknown")
+
+        score, criticality = compute_score_and_criticality(
+            metrics["total_messages"],
+            metrics["error_rate"],
+            5,  # default business_weight
+        )
+
+        integration_data = {
+            "user_id": user.id,
+            "name": display_name,
+            "platform": "CPI",
+            "source_system": source_system,
+            "target_system": target_system,
+            "monthly_volume": metrics["total_messages"],
+            "error_count": metrics["failed"],
+            "error_rate": round(metrics["error_rate"], 4),
+            "avg_processing_time": round(metrics["avg_time"], 2),
+            "business_weight": existing.business_weight if existing else 5,
+            "score": score,
+            "criticality": criticality,
+            "external_id": canonical_id,
+            "external_source": "CPI",
+        }
+
+        if existing:
+            for key, value in integration_data.items():
+                setattr(existing, key, value)
+            existing.last_synced = datetime.utcnow()
+        else:
+            integration_data["last_synced"] = datetime.utcnow()
+            db.add(Integration(**integration_data))
+
+        total_synced += 1
+
+    db.commit()
+
+    # ── PASS 2: Participant API artifacts without MPL data (idle/new flows) ───
+    try:
+        artifacts = connector.get_integration_artifacts()
+    except Exception as e:
+        logger.warning(f"Could not fetch Participant API artifacts: {e}")
+        artifacts = []
+
+    for artifact in artifacts:
+        artifact_id = artifact.get("id")
+        if not artifact_id:
+            continue
+
+        # Try to match with already-synced MPL data via all possible keys
         metrics = (
-            bulk_metrics.get(artifact["symbolicName"])
-            or bulk_metrics.get(artifact["name"])
+            bulk_metrics.get(artifact_id)
+            or bulk_metrics.get(artifact.get("symbolicName"))
+            or bulk_metrics.get(artifact.get("name"))
             or {}
         )
 
-        # Targeted fallback for artifacts not covered by bulk fetch
-        if not metrics.get("has_data") and include_mpl and artifact.get("id"):
-            targeted = connector.get_messages_for_artifact(artifact["id"], limit=100)
+        if metrics.get("has_data"):
+            # Already handled in pass 1 (the canonical_id might differ slightly)
+            canonical_id = metrics.get("integration_flow_name") or artifact_id
+            seen_external_ids.add(canonical_id)
+            seen_external_ids.add(artifact_id)
+            continue
+
+        # Targeted fallback: query MPL by symbolic name (MPL uses symbolic ID, not UUID)
+        symbolic = artifact.get("symbolicName") or artifact.get("name")
+        if include_mpl and symbolic:
+            targeted = connector.get_messages_for_artifact(symbolic, limit=100)
             if targeted:
                 from backend.cpi_connector import calculate_metrics
                 metrics = calculate_metrics(targeted)
 
-        endpoints = connector.get_integration_endpoints(artifact["id"]) if metrics.get("has_data") else []
+        seen_external_ids.add(artifact_id)
+        existing = (
+            db.query(Integration)
+            .filter(
+                Integration.user_id == user.id,
+                Integration.external_id == artifact_id,
+                Integration.external_source == "CPI",
+            )
+            .first()
+        )
 
+        endpoints = connector.get_integration_endpoints(artifact_id) if metrics.get("has_data") else []
         integration_data = convert_cpi_to_integration(artifact, endpoints)
         integration_data["user_id"] = user.id
+
         if existing and existing.target_system and integration_data["target_system"] == "Unknown":
             integration_data["target_system"] = existing.target_system
 
         if metrics.get("has_data"):
+            source_sys = metrics.get("sender") or integration_data["source_system"]
+            target_sys = metrics.get("receiver") or integration_data["target_system"]
             score, criticality = compute_score_and_criticality(
                 metrics["total_messages"],
                 metrics["error_rate"],
@@ -575,6 +674,8 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
             )
             integration_data.update(
                 {
+                    "source_system": source_sys,
+                    "target_system": target_sys,
                     "monthly_volume": metrics["total_messages"],
                     "error_count": metrics["failed"],
                     "error_rate": round(metrics["error_rate"], 4),
@@ -604,8 +705,6 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
             db.add(Integration(**integration_data))
 
         total_synced += 1
-        if index % 100 == 0:
-            db.commit()
 
     if reset:
         db.query(Integration).filter(
