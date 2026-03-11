@@ -638,13 +638,8 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
             seen_external_ids.add(artifact_id)
             continue
 
-        # Targeted fallback: query MPL by symbolic name (MPL uses symbolic ID, not UUID)
-        symbolic = artifact.get("symbolicName") or artifact.get("name")
-        if include_mpl and symbolic:
-            targeted = connector.get_messages_for_artifact(symbolic, limit=100)
-            if targeted:
-                from backend.cpi_connector import calculate_metrics
-                metrics = calculate_metrics(targeted)
+        # Targeted fallback removed — bulk MPL (30 days) already covers all active flows.
+        # Individual per-artifact queries cause 700+ HTTP calls and timeout the sync endpoint.
 
         seen_external_ids.add(artifact_id)
         existing = (
