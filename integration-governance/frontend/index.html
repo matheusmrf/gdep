@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GDEP | Login e Governança</title>
+    <title>Dashboard Governança | Login e Governança</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -247,6 +247,50 @@
             transition: all 140ms ease;
             outline: none;
             line-height: 1.4;
+        }
+
+        button[disabled] {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none !important;
+            box-shadow: none !important;
+        }
+
+        th.sortable-col {
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        th.sortable-col:hover {
+            color: var(--accent);
+        }
+        th.sortable-col.sort-active {
+            color: var(--accent);
+        }
+        th.sortable-col .sort-icon {
+            font-style: normal;
+            font-size: 0.7em;
+        }
+
+        button.is-loading {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            pointer-events: none;
+        }
+
+        button.is-loading::before {
+            content: "";
+            width: 12px;
+            height: 12px;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: button-spin 0.8s linear infinite;
+        }
+
+        @keyframes button-spin {
+            to { transform: rotate(360deg); }
         }
 
         button.primary {
@@ -728,9 +772,9 @@
                             <div class="hero-brand-sub">Integration Governance</div>
                         </div>
                     </div>
-                    <div class="eyebrow">GDEP · Acesso seguro</div>
+                    <div class="eyebrow">Dashboard Governança · Acesso seguro</div>
                     <h1>Governança de integrações com acesso por conta.</h1>
-                    <p>Faça login para ver seu dashboard isolado, sincronizar o CPI e gerenciar credenciais de forma segura.</p>
+                    <p>Faça login para ver seu dashboard isolado, sincronizar CPI/SAP PO e gerenciar credenciais de forma segura.</p>
                 </div>
                 <div class="hero-grid">
                     <article class="mini-stat">
@@ -748,7 +792,7 @@
                 </div>
             </section>
             <section class="auth-card">
-                <div class="eyebrow">GDEP</div>
+                <div class="eyebrow">Dashboard Governança</div>
                 <div class="auth-card-title">Bem-vindo de volta</div>
                 <div class="auth-card-sub">Acesse sua conta para gerenciar as integrações</div>
                 <div class="tabs">
@@ -785,7 +829,7 @@
                 <div class="topbar-brand">
                     <div class="topbar-logo">AM</div>
                     <div>
-                        <div class="topbar-title">GDEP</div>
+                        <div class="topbar-title">Dashboard Governança</div>
                         <div class="topbar-subtitle" id="welcomeUser">Governança de Integrações</div>
                     </div>
                 </div>
@@ -809,6 +853,7 @@
                         </div>
                         <div class="action-row">
                             <button class="secondary" id="refreshButton">↺ Atualizar</button>
+                            <button class="secondary" id="syncPoButton">⟳ Sincronizar SAP PO</button>
                             <button class="primary" id="syncButton">⟳ Sincronizar CPI</button>
                         </div>
                     </div>
@@ -835,6 +880,7 @@
                                 <select id="platformFilter">
                                     <option value="">Todas</option>
                                     <option value="CPI">CPI</option>
+                                    <option value="SAP PO">SAP PO</option>
                                 </select>
                             </div>
                             <div class="filter-input filter-xs">
@@ -847,8 +893,8 @@
                             <div class="filter-input filter-xs">
                                 <span class="filter-label">Com dados</span>
                                 <select id="hasDataFilter">
-                                    <option value="1" selected>Com dados</option>
-                                    <option value="">Todos</option>
+                                    <option value="" selected>Todos</option>
+                                    <option value="1">Com dados</option>
                                 </select>
                             </div>
                             <button class="filters-toggle" id="filtersToggle" type="button">⚙ Avançado ▾</button>
@@ -891,7 +937,7 @@
                     <p class="status" id="statusText"></p>
                     <div class="sync-banner" id="syncBanner">
                         <strong>Nenhum dado coletado ainda.</strong>
-                        <div class="subtle">As credenciais do CPI já estão salvas. Clique em <strong>Sincronizar CPI</strong> para carregar as integrações reais.</div>
+                        <div class="subtle">As credenciais já estão salvas. Clique em <strong>Sincronizar CPI</strong> ou <strong>Sincronizar SAP PO</strong> para carregar as integrações reais.</div>
                     </div>
                     <div class="stats-grid" id="metricCards"></div>
                 </section>
@@ -912,7 +958,7 @@
                         <div class="panel-header">
                             <div>
                                 <h3>Integrações</h3>
-                                <div class="subtle">Ordenadas por score, do maior risco para o menor.</div>
+                                <div class="subtle">Clique nas colunas para ordenar. Padrão: maior volume.</div>
                             </div>
                             <div class="subtle" id="resultCount"></div>
                         </div>
@@ -937,11 +983,11 @@
                                     <th>Plataforma</th>
                                     <th>Origem</th>
                                     <th>Destino</th>
-                                    <th>Volume</th>
-                                    <th>Erro</th>
-                                    <th>Tempo</th>
-                                    <th>Score</th>
-                                    <th>Criticidade</th>
+                                    <th class="sortable-col" data-sort="monthly_volume">Volume <span class="sort-icon"></span></th>
+                                    <th class="sortable-col" data-sort="error_rate">Erro <span class="sort-icon"></span></th>
+                                    <th class="sortable-col" data-sort="avg_processing_time">Tempo <span class="sort-icon"></span></th>
+                                    <th class="sortable-col" data-sort="score">Score <span class="sort-icon"></span></th>
+                                    <th class="sortable-col" data-sort="criticality">Criticidade <span class="sort-icon"></span></th>
                                 </tr>
                             </thead>
                             <tbody id="tableBody"></tbody>
@@ -971,16 +1017,17 @@
 
                     <!-- Settings tabs -->
                     <div class="tabs" id="settingsTabs">
-                        <button class="tab active" data-tab="creds">Credenciais CPI</button>
+                        <button class="tab active" data-tab="creds">Conexões (CPI + SAP PO)</button>
                         <button class="tab" data-tab="envs">Ambientes</button>
                         <button class="tab" data-tab="schedule">Sincronização Auto</button>
                         <button class="tab" data-tab="alerts">Alertas por E-mail</button>
                     </div>
 
-                    <!-- Credenciais CPI -->
+                    <!-- Conexões -->
                     <div id="settingsTab-creds">
                         <p class="subtle">Credenciais ativas. Associadas somente à sua conta e cifradas no servidor.</p>
                         <form id="settingsForm">
+                            <h3 style="margin:0 0 10px;">SAP CPI</h3>
                             <label>Host do CPI
                                 <input type="text" id="settingsHost" placeholder="l400231-tmn.hci.br1.hana.ondemand.com" required />
                             </label>
@@ -993,9 +1040,19 @@
                             <label>Tenant ID
                                 <input type="text" id="settingsTenantId" required />
                             </label>
+                            <h3 style="margin:10px 0 10px;">SAP PO</h3>
+                            <label>Host do SAP PO
+                                <input type="text" id="settingsPoHost" placeholder="http://xq3abpas.arcelormittal.com.br:50000" />
+                            </label>
+                            <label>Usuário do SAP PO
+                                <input type="text" id="settingsPoUsername" />
+                            </label>
+                            <label>Senha do SAP PO
+                                <input type="password" id="settingsPoPassword" placeholder="Informe para salvar ou atualizar" />
+                            </label>
                             <div class="action-row">
-                                <button class="primary" type="submit">Salvar credenciais</button>
-                                <button class="secondary" type="button" id="syncFromSettingsButton">Salvar e sincronizar</button>
+                                <button class="primary" type="submit">Salvar conexões</button>
+                                <button class="secondary" type="button" id="syncFromSettingsButton">Salvar e sincronizar tudo</button>
                             </div>
                         </form>
                         <p class="status" id="settingsStatus"></p>
@@ -1124,6 +1181,9 @@
         const nextPageButton = document.getElementById("nextPageButton");
         const paginationInfo = document.getElementById("paginationInfo");
         const pageIndicator = document.getElementById("pageIndicator");
+        const refreshButton = document.getElementById("refreshButton");
+        const syncPoButton = document.getElementById("syncPoButton");
+        const syncButton = document.getElementById("syncButton");
         const dashboardSection = document.getElementById("dashboardSection");
         const settingsSection = document.getElementById("settingsSection");
         const syncBanner = document.getElementById("syncBanner");
@@ -1134,6 +1194,8 @@
         let currentPage = 1;
         let currentTotal = 0;
         let favoriteIds = new Set();
+        let sortField = "monthly_volume";
+        let sortDir = "desc"; // 'asc' or 'desc'
 
         const criticalityStyle = {
             "Crítica": "badge",
@@ -1145,6 +1207,22 @@
         function setStatus(el, message, isError = false) {
             el.textContent = message;
             el.style.color = isError ? "var(--accent)" : "var(--muted)";
+        }
+
+        function setButtonLoading(button, loadingLabel, isLoading) {
+            if (!button) return;
+            if (!button.dataset.originalLabel) {
+                button.dataset.originalLabel = button.textContent;
+            }
+            if (isLoading) {
+                button.disabled = true;
+                button.classList.add("is-loading");
+                button.textContent = loadingLabel;
+                return;
+            }
+            button.disabled = false;
+            button.classList.remove("is-loading");
+            button.textContent = button.dataset.originalLabel;
         }
 
         async function api(path, options = {}) {
@@ -1242,6 +1320,32 @@
             renderTableFavoriteIcons();
         }
 
+        function updateSortIcons() {
+            document.querySelectorAll(".sortable-col").forEach(th => {
+                const icon = th.querySelector(".sort-icon");
+                if (th.dataset.sort === sortField) {
+                    icon.textContent = sortDir === "asc" ? " ▲" : " ▼";
+                    th.classList.add("sort-active");
+                } else {
+                    icon.textContent = "";
+                    th.classList.remove("sort-active");
+                }
+            });
+        }
+
+        document.querySelectorAll(".sortable-col").forEach(th => {
+            th.addEventListener("click", () => {
+                const field = th.dataset.sort;
+                if (sortField === field) {
+                    sortDir = sortDir === "asc" ? "desc" : "asc";
+                } else {
+                    sortField = field;
+                    sortDir = "desc";
+                }
+                loadDashboard();
+            });
+        });
+
         function renderTableFavoriteIcons() {
             document.querySelectorAll("[data-fav-id]").forEach(btn => {
                 const id = Number(btn.dataset.favId);
@@ -1291,9 +1395,20 @@
             emptyState.classList.toggle("hidden", data.length > 0);
         }
 
-        function hasConfiguredCPI() {
-            return Boolean(currentSettings && currentSettings.cpi_host && currentSettings.cpi_username &&
-                currentSettings.cpi_tenant_id && currentSettings.has_password);
+        function hasConfiguredAnyConnection() {
+            if (!currentSettings) return false;
+            const hasCPI = Boolean(
+                currentSettings.cpi_host &&
+                currentSettings.cpi_username &&
+                currentSettings.cpi_tenant_id &&
+                currentSettings.cpi_has_password
+            );
+            const hasPO = Boolean(
+                currentSettings.po_host &&
+                currentSettings.po_username &&
+                currentSettings.po_has_password
+            );
+            return hasCPI || hasPO;
         }
 
         async function loadFavorites() {
@@ -1304,16 +1419,33 @@
         }
 
         async function saveSettings() {
-            const payload = {
+            const cpiPayload = {
                 cpi_host: document.getElementById("settingsHost").value,
                 cpi_username: document.getElementById("settingsUsername").value,
                 cpi_password: document.getElementById("settingsPassword").value,
                 cpi_tenant_id: document.getElementById("settingsTenantId").value
             };
-            const saved = await api("/me/cpi-settings", { method: "PUT", body: JSON.stringify(payload) });
-            currentSettings = saved;
+            const poPayload = {
+                po_host: document.getElementById("settingsPoHost").value,
+                po_username: document.getElementById("settingsPoUsername").value,
+                po_password: document.getElementById("settingsPoPassword").value,
+            };
+
+            const savedCPI = await api("/me/cpi-settings", { method: "PUT", body: JSON.stringify(cpiPayload) });
+            let savedPO = await api("/me/po-settings");
+            if (poPayload.po_host && poPayload.po_username && poPayload.po_password) {
+                savedPO = await api("/me/po-settings", { method: "PUT", body: JSON.stringify(poPayload) });
+            }
+
+            currentSettings = {
+                ...savedCPI,
+                ...savedPO,
+                cpi_has_password: savedCPI.has_password,
+                po_has_password: savedPO.has_password,
+            };
             document.getElementById("settingsPassword").value = "";
-            return saved;
+            document.getElementById("settingsPoPassword").value = "";
+            return currentSettings;
         }
 
         function buildQuery() {
@@ -1323,6 +1455,10 @@
             if (platformFilter.value) params.set("platform", platformFilter.value);
             if (startDateFilter.value) params.set("start_date", startDateFilter.value);
             if (endDateFilter.value) params.set("end_date", endDateFilter.value);
+            if (favoritesFilter.value === "1") params.set("favorites_only", "true");
+            if (hasDataFilter.value === "1") params.set("has_data", "true");
+            params.set("sort_by", sortField);
+            params.set("sort_dir", sortDir);
             if (minScoreFilter.value) params.set("min_score", minScoreFilter.value);
             const limit = Number(pageSizeSelect.value);
             params.set("limit", String(limit));
@@ -1339,22 +1475,16 @@
                     api("/alerts")
                 ]);
 
-                // Client-side filters
-                let items = integrationsPage.items;
-                let total = integrationsPage.total;
-                if (favoritesFilter.value === "1") {
-                    items = items.filter(i => favoriteIds.has(i.id));
-                }
-                if (hasDataFilter.value === "1") {
-                    items = items.filter(i => !(i.monthly_volume === 0 && i.error_count === 0 && i.avg_processing_time === 0));
-                }
-                total = items.length;
+                // Server-side filtering + sorting + pagination
+                const items = integrationsPage.items;
+                const total = integrationsPage.total;
 
                 renderMetrics(summary);
                 renderChart(summary.criticality_distribution);
+                updateSortIcons();
                 renderTable(items, total, integrationsPage.skip, integrationsPage.limit);
                 renderAlerts(alerts.alerts);
-                syncBanner.classList.toggle("open", summary.total_integrations === 0 && hasConfiguredCPI());
+                syncBanner.classList.toggle("open", summary.total_integrations === 0 && hasConfiguredAnyConnection());
                 setStatus(statusText, "Dados carregados.");
             } catch (error) {
                 setStatus(statusText, error.message, true);
@@ -1363,14 +1493,29 @@
 
         async function loadSettings() {
             try {
-                const settings = await api("/me/cpi-settings");
-                currentSettings = settings;
-                document.getElementById("settingsHost").value = settings.cpi_host || "";
-                document.getElementById("settingsUsername").value = settings.cpi_username || "";
-                document.getElementById("settingsTenantId").value = settings.cpi_tenant_id || "";
+                const [cpiSettings, poSettings] = await Promise.all([
+                    api("/me/cpi-settings"),
+                    api("/me/po-settings"),
+                ]);
+
+                currentSettings = {
+                    ...cpiSettings,
+                    ...poSettings,
+                    cpi_has_password: cpiSettings.has_password,
+                    po_has_password: poSettings.has_password,
+                };
+                document.getElementById("settingsHost").value = cpiSettings.cpi_host || "";
+                document.getElementById("settingsUsername").value = cpiSettings.cpi_username || "";
+                document.getElementById("settingsTenantId").value = cpiSettings.cpi_tenant_id || "";
                 document.getElementById("settingsPassword").value = "";
-                if (settings.updated_at) {
-                    setStatus(settingsStatus, `Credenciais salvas. Última atualização: ${new Date(settings.updated_at).toLocaleString("pt-BR")}`);
+
+                document.getElementById("settingsPoHost").value = poSettings.po_host || "";
+                document.getElementById("settingsPoUsername").value = poSettings.po_username || "";
+                document.getElementById("settingsPoPassword").value = "";
+
+                const updatedAt = cpiSettings.updated_at || poSettings.updated_at;
+                if (updatedAt) {
+                    setStatus(settingsStatus, `Conexões salvas. Última atualização: ${new Date(updatedAt).toLocaleString("pt-BR")}`);
                 }
             } catch (error) {
                 setStatus(settingsStatus, error.message, true);
@@ -1536,11 +1681,13 @@
 
         document.getElementById("syncFromSettingsButton").addEventListener("click", async () => {
             try {
-                setStatus(settingsStatus, "Salvando credenciais...");
+                setStatus(settingsStatus, "Salvando conexões...");
                 await saveSettings();
                 setStatus(settingsStatus, "Sincronizando CPI...");
                 await api("/integrations/sync-cpi", { method: "POST", body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 100 }) });
-                setStatus(settingsStatus, "Credenciais salvas e CPI sincronizado.");
+                setStatus(settingsStatus, "Sincronizando SAP PO...");
+                await api("/integrations/sync-po", { method: "POST", body: JSON.stringify({ reset: true, days: 1, message_limit: 5000 }) });
+                setStatus(settingsStatus, "Conexões salvas e sincronização concluída.");
                 showSection("dashboard");
                 await loadDashboard();
             } catch (error) { setStatus(settingsStatus, error.message, true); }
@@ -1603,10 +1750,20 @@
         });
 
         // Dashboard controls
-        document.getElementById("refreshButton").addEventListener("click", loadDashboard);
-
-        document.getElementById("syncButton").addEventListener("click", async () => {
+        refreshButton.addEventListener("click", async () => {
             try {
+                setButtonLoading(refreshButton, "Atualizando...", true);
+                await loadDashboard();
+            } finally {
+                setButtonLoading(refreshButton, "", false);
+            }
+        });
+
+        syncButton.addEventListener("click", async () => {
+            try {
+                setButtonLoading(syncButton, "Sincronizando...", true);
+                refreshButton.disabled = true;
+                syncPoButton.disabled = true;
                 setStatus(statusText, "Sincronizando CPI...");
                 await api("/integrations/sync-cpi", { method: "POST", body: JSON.stringify({ reset: true, include_mpl: true, message_limit: 100 }) });
                 await loadFavorites();
@@ -1615,6 +1772,30 @@
             } catch (error) {
                 setStatus(statusText, error.message, true);
                 showSection("settings");
+            } finally {
+                refreshButton.disabled = false;
+                syncPoButton.disabled = false;
+                setButtonLoading(syncButton, "", false);
+            }
+        });
+
+        syncPoButton.addEventListener("click", async () => {
+            try {
+                setButtonLoading(syncPoButton, "Sincronizando...", true);
+                refreshButton.disabled = true;
+                syncButton.disabled = true;
+                setStatus(statusText, "Sincronizando SAP PO...");
+                await api("/integrations/sync-po", { method: "POST", body: JSON.stringify({ reset: true, days: 1, message_limit: 5000 }) });
+                await loadFavorites();
+                await loadDashboard();
+                setStatus(statusText, "Sincronização SAP PO concluída.");
+            } catch (error) {
+                setStatus(statusText, error.message, true);
+                showSection("settings");
+            } finally {
+                refreshButton.disabled = false;
+                syncButton.disabled = false;
+                setButtonLoading(syncPoButton, "", false);
             }
         });
 

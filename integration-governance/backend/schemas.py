@@ -50,10 +50,29 @@ class CPISettingsResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class POSettingsRequest(BaseModel):
+    po_host: str = Field(min_length=3, max_length=255)
+    po_username: str = Field(min_length=2, max_length=255)
+    po_password: str = Field(min_length=4, max_length=255)
+
+
+class POSettingsResponse(BaseModel):
+    po_host: Optional[str] = None
+    po_username: Optional[str] = None
+    has_password: bool
+    updated_at: Optional[datetime] = None
+
+
 class SyncCPIRequest(BaseModel):
     reset: bool = False
     include_mpl: bool = True
     message_limit: int = Field(default=100, ge=1, le=100)
+
+
+class SyncPORequest(BaseModel):
+    reset: bool = False
+    days: int = Field(default=1, ge=1, le=30)
+    message_limit: int = Field(default=5000, ge=100, le=20000)
 
 
 class IntegrationBase(BaseModel):
@@ -77,6 +96,17 @@ class IntegrationRead(IntegrationBase, ORMBaseModel):
     tenant_id: Optional[int] = None
     external_id: Optional[str] = None
     external_source: Optional[str] = None
+    cpi_symbolic_name: Optional[str] = None
+    cpi_artifact_type: Optional[str] = None
+    cpi_version: Optional[str] = None
+    cpi_state: Optional[str] = None
+    cpi_deployed: int = 0
+    cpi_endpoint_count: int = 0
+    cpi_endpoint_urls: Optional[str] = None
+    cpi_sender: Optional[str] = None
+    cpi_receiver: Optional[str] = None
+    cpi_integration_flow_name: Optional[str] = None
+    cpi_artifact_name: Optional[str] = None
     last_synced: Optional[datetime] = None
 
 

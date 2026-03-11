@@ -1,11 +1,14 @@
 import os
+from pathlib import Path
 from typing import Iterable
 
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./integration_governance.db")
+BASE_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_SQLITE_PATH = BASE_DIR / "integration_governance.db"
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DEFAULT_SQLITE_PATH}")
 
 engine_kwargs = {}
 
@@ -39,12 +42,32 @@ def sync_schema():
                         cpi_username VARCHAR,
                         cpi_password_encrypted VARCHAR,
                         cpi_tenant_id VARCHAR,
+                        po_host VARCHAR,
+                        po_username VARCHAR,
+                        po_password_encrypted VARCHAR,
+                        po_settings_updated_at DATETIME,
                         settings_updated_at DATETIME,
                         created_at DATETIME NOT NULL
                     )
                     """
                 )
             )
+
+    if "users" in table_names:
+        user_columns = {column["name"] for column in inspector.get_columns("users")}
+        user_alter_statements = []
+        if "po_host" not in user_columns:
+            user_alter_statements.append("ALTER TABLE users ADD COLUMN po_host VARCHAR")
+        if "po_username" not in user_columns:
+            user_alter_statements.append("ALTER TABLE users ADD COLUMN po_username VARCHAR")
+        if "po_password_encrypted" not in user_columns:
+            user_alter_statements.append("ALTER TABLE users ADD COLUMN po_password_encrypted VARCHAR")
+        if "po_settings_updated_at" not in user_columns:
+            user_alter_statements.append("ALTER TABLE users ADD COLUMN po_settings_updated_at DATETIME")
+        if user_alter_statements:
+            with engine.begin() as connection:
+                for statement in user_alter_statements:
+                    connection.execute(text(statement))
 
     if "user_sessions" not in table_names:
         with engine.begin() as connection:
@@ -99,6 +122,28 @@ def sync_schema():
         alter_statements.append("ALTER TABLE integrations ADD COLUMN last_synced DATETIME")
     if "department" not in existing_columns:
         alter_statements.append("ALTER TABLE integrations ADD COLUMN department VARCHAR DEFAULT 'Operações'")
+    if "cpi_symbolic_name" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_symbolic_name VARCHAR")
+    if "cpi_artifact_type" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_artifact_type VARCHAR")
+    if "cpi_version" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_version VARCHAR")
+    if "cpi_state" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_state VARCHAR")
+    if "cpi_deployed" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_deployed INTEGER NOT NULL DEFAULT 0")
+    if "cpi_endpoint_count" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_endpoint_count INTEGER NOT NULL DEFAULT 0")
+    if "cpi_endpoint_urls" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_endpoint_urls VARCHAR")
+    if "cpi_sender" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_sender VARCHAR")
+    if "cpi_receiver" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_receiver VARCHAR")
+    if "cpi_integration_flow_name" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_integration_flow_name VARCHAR")
+    if "cpi_artifact_name" not in existing_columns:
+        alter_statements.append("ALTER TABLE integrations ADD COLUMN cpi_artifact_name VARCHAR")
 
     if alter_statements:
         with engine.begin() as connection:
