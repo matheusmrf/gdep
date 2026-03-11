@@ -19,6 +19,10 @@ class User(Base):
     cpi_username = Column(String, nullable=True)
     cpi_password_encrypted = Column(String, nullable=True)
     cpi_tenant_id = Column(String, nullable=True)
+    po_host = Column(String, nullable=True)
+    po_username = Column(String, nullable=True)
+    po_password_encrypted = Column(String, nullable=True)
+    po_settings_updated_at = Column(DateTime, nullable=True)
     settings_updated_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
@@ -64,6 +68,17 @@ class Integration(Base):
     criticality = Column(String, nullable=False, index=True)
     external_id = Column(String, nullable=True, index=True)
     external_source = Column(String, nullable=True, index=True)
+    cpi_symbolic_name = Column(String, nullable=True)
+    cpi_artifact_type = Column(String, nullable=True)
+    cpi_version = Column(String, nullable=True)
+    cpi_state = Column(String, nullable=True)
+    cpi_deployed = Column(Integer, nullable=False, default=0)
+    cpi_endpoint_count = Column(Integer, nullable=False, default=0)
+    cpi_endpoint_urls = Column(String, nullable=True)
+    cpi_sender = Column(String, nullable=True)
+    cpi_receiver = Column(String, nullable=True)
+    cpi_integration_flow_name = Column(String, nullable=True)
+    cpi_artifact_name = Column(String, nullable=True)
     last_synced = Column(DateTime, default=datetime.utcnow, nullable=True)
 
     __table_args__ = (

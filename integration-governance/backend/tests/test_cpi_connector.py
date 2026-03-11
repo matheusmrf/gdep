@@ -190,6 +190,8 @@ class TestConvertCPIToIntegration:
         assert "HTTP" in result["target_system"]
         assert result["external_id"] == "12345"
         assert result["external_source"] == "CPI"
+        assert result["cpi_symbolic_name"] == "test_iflow"
+        assert result["cpi_deployed"] == 0
 
     def test_convert_artifact_no_endpoints(self):
         """Testa conversão com artifact sem endpoints"""
@@ -220,6 +222,8 @@ class TestConvertCPIToIntegration:
         result = convert_cpi_to_integration(artifact, endpoints)
 
         assert result["target_system"] == "PM/OrdemManutencao"
+        assert result["cpi_endpoint_count"] == 1
+        assert "https://tenant.example.com/http/MES/PM/OrdemManutencao" in result["cpi_endpoint_urls"]
 
 
 def test_calculate_metrics():

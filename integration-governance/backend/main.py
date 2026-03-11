@@ -1,4 +1,5 @@
 from datetime import date, datetime, time, timedelta
+import logging
 from pathlib import Path
 from typing import Dict, Optional
 import smtplib
@@ -14,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.collector import calculate_score, classify
 from backend.cpi_connector import CPIConnector, convert_cpi_to_integration
+from backend.po_connector import SAPPOConnector, normalize_po_host
 from backend.database import Base, SessionLocal, engine, sync_schema
 from backend.models import AlertSettings, CPIEnvironment, Favorite, Integration, SyncSchedule, User, UserSession
 from backend.schemas import (
@@ -25,6 +27,8 @@ from backend.schemas import (
     CPIEnvironmentRequest,
     CPISettingsRequest,
     CPISettingsResponse,
+    POSettingsRequest,
+    POSettingsResponse,
     FavoriteRead,
     IntegrationRead,
     LoginRequest,
@@ -32,6 +36,7 @@ from backend.schemas import (
     RegisterRequest,
     SummaryResponse,
     SyncCPIRequest,
+    SyncPORequest,
     SyncScheduleRead,
     SyncScheduleRequest,
     UserRead,
@@ -54,36 +59,116 @@ from backend.security import (
 BASE_DIR = Path(__file__).resolve().parents[1]
 FRONTEND_DIR = BASE_DIR / "frontend"
 
-app = FastAPI(title="GDEP")
+app = FastAPI(title="Dashboard Governança")
 Base.metadata.create_all(bind=engine)
 sync_schema()
 
 scheduler = BackgroundScheduler()
+logger = logging.getLogger(__name__)
 
 
-def _run_auto_sync_for_user(user_id: int):
-    """Called by APScheduler: syncs CPI for a user and sends email alerts if configured."""
+def _update_schedule_last_run(db: Session, user_id: int):
+    schedule = db.query(SyncSchedule).filter(SyncSchedule.user_id == user_id).first()
+    if schedule:
+        schedule.last_run = datetime.utcnow()
+        db.commit()
+
+
+def _run_daily_structure_sync_for_user(user_id: int):
+    """Daily sync: full inventory + metrics refresh for CPI and SAP PO."""
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
             return
-        decrypted = decrypt_secret(user.cpi_password_encrypted)
-        if not all([user.cpi_host, user.cpi_username, decrypted, user.cpi_tenant_id]):
+        cpi_decrypted = decrypt_secret(user.cpi_password_encrypted)
+        if all([user.cpi_host, user.cpi_username, cpi_decrypted, user.cpi_tenant_id]):
+            cpi_connector = CPIConnector(
+                host=user.cpi_host,
+                username=user.cpi_username,
+                password=cpi_decrypted,
+                tenant_id=user.cpi_tenant_id,
+            )
+            if cpi_connector.health_check():
+                _do_sync(
+                    cpi_connector,
+                    db,
+                    user,
+                    reset=False,
+                    include_mpl=True,
+                    message_limit=100,
+                    include_artifacts=True,
+                )
+
+        po_decrypted = decrypt_secret(user.po_password_encrypted)
+        if all([user.po_host, user.po_username, po_decrypted]):
+            po_connector = SAPPOConnector(
+                host=user.po_host,
+                username=user.po_username,
+                password=po_decrypted,
+            )
+            _do_sync_po(
+                po_connector,
+                db,
+                user,
+                reset=False,
+                days=1,
+                message_limit=5000,
+                include_directory=True,
+            )
+
+        _update_schedule_last_run(db, user_id)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
+def _run_metrics_sync_for_user(user_id: int):
+    """Every 5 minutes: refresh only runtime metrics for CPI and SAP PO."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
             return
-        connector = CPIConnector(
-            host=user.cpi_host,
-            username=user.cpi_username,
-            password=decrypted,
-            tenant_id=user.cpi_tenant_id,
-        )
-        if not connector.health_check():
-            return
-        _do_sync(connector, db, user, reset=False, include_mpl=True, message_limit=100)
-        schedule = db.query(SyncSchedule).filter(SyncSchedule.user_id == user_id).first()
-        if schedule:
-            schedule.last_run = datetime.utcnow()
-            db.commit()
+
+        cpi_decrypted = decrypt_secret(user.cpi_password_encrypted)
+        if all([user.cpi_host, user.cpi_username, cpi_decrypted, user.cpi_tenant_id]):
+            cpi_connector = CPIConnector(
+                host=user.cpi_host,
+                username=user.cpi_username,
+                password=cpi_decrypted,
+                tenant_id=user.cpi_tenant_id,
+            )
+            if cpi_connector.health_check():
+                _do_sync(
+                    cpi_connector,
+                    db,
+                    user,
+                    reset=False,
+                    include_mpl=True,
+                    message_limit=100,
+                    include_artifacts=False,
+                )
+
+        po_decrypted = decrypt_secret(user.po_password_encrypted)
+        if all([user.po_host, user.po_username, po_decrypted]):
+            po_connector = SAPPOConnector(
+                host=user.po_host,
+                username=user.po_username,
+                password=po_decrypted,
+            )
+            _do_sync_po(
+                po_connector,
+                db,
+                user,
+                reset=False,
+                days=1,
+                message_limit=5000,
+                include_directory=False,
+            )
+
+        _update_schedule_last_run(db, user_id)
     except Exception:
         pass
     finally:
@@ -91,7 +176,12 @@ def _run_auto_sync_for_user(user_id: int):
 
 
 def _reload_scheduler():
-    """Rebuild scheduler jobs from DB."""
+    """Rebuild scheduler jobs from DB.
+
+    For each enabled user:
+    - Daily full sync at configured hour
+    - Metrics-only sync every 5 minutes
+    """
     for job in scheduler.get_jobs():
         job.remove()
     db = SessionLocal()
@@ -99,12 +189,20 @@ def _reload_scheduler():
         schedules = db.query(SyncSchedule).filter(SyncSchedule.enabled == 1).all()
         for s in schedules:
             scheduler.add_job(
-                _run_auto_sync_for_user,
+                _run_daily_structure_sync_for_user,
                 "cron",
                 hour=s.hour,
                 minute=0,
                 args=[s.user_id],
-                id=f"sync_user_{s.user_id}",
+                id=f"sync_daily_user_{s.user_id}",
+                replace_existing=True,
+            )
+            scheduler.add_job(
+                _run_metrics_sync_for_user,
+                "interval",
+                minutes=5,
+                args=[s.user_id],
+                id=f"sync_metrics_user_{s.user_id}",
                 replace_existing=True,
             )
     finally:
@@ -389,6 +487,37 @@ def update_cpi_settings(
     )
 
 
+@app.get("/me/po-settings", response_model=POSettingsResponse)
+def get_po_settings(current_user: User = Depends(get_current_user)):
+    return POSettingsResponse(
+        po_host=current_user.po_host,
+        po_username=current_user.po_username,
+        has_password=bool(current_user.po_password_encrypted),
+        updated_at=current_user.po_settings_updated_at,
+    )
+
+
+@app.put("/me/po-settings", response_model=POSettingsResponse)
+def update_po_settings(
+    payload: POSettingsRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    current_user.po_host = normalize_po_host(payload.po_host)
+    current_user.po_username = payload.po_username.strip()
+    current_user.po_password_encrypted = encrypt_secret(payload.po_password)
+    current_user.po_settings_updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(current_user)
+
+    return POSettingsResponse(
+        po_host=current_user.po_host,
+        po_username=current_user.po_username,
+        has_password=True,
+        updated_at=current_user.po_settings_updated_at,
+    )
+
+
 @app.get("/integrations", response_model=PaginatedIntegrationsResponse)
 def get_integrations(
     criticality: Optional[str] = None,
@@ -400,10 +529,30 @@ def get_integrations(
     end_date: Optional[date] = None,
     skip: int = Query(default=0, ge=0),
     limit: int = Query(default=25, ge=1, le=100),
+    sort_by: Optional[str] = Query(default="monthly_volume"),
+    sort_dir: Optional[str] = Query(default="desc"),
+    favorites_only: Optional[bool] = Query(default=False),
+    has_data: Optional[bool] = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(Integration).filter(Integration.user_id == current_user.id)
+
+    if favorites_only:
+        query = query.join(
+            Favorite,
+            (Favorite.integration_id == Integration.id) & (Favorite.user_id == current_user.id),
+        )
+
+    has_data_expr = (
+        (Integration.monthly_volume > 0)
+        | (Integration.error_count > 0)
+        | (Integration.avg_processing_time > 0)
+    )
+    if has_data is True:
+        query = query.filter(has_data_expr)
+    elif has_data is False:
+        query = query.filter(~has_data_expr)
 
     if criticality:
         query = query.filter(Integration.criticality == criticality)
@@ -426,8 +575,20 @@ def get_integrations(
         query = query.filter(Integration.last_synced <= datetime.combine(end_date, time.max))
 
     total = query.with_entities(func.count(Integration.id)).scalar() or 0
+
+    # Server-side sorting
+    SORT_COLUMNS = {
+        "score": Integration.score,
+        "monthly_volume": Integration.monthly_volume,
+        "error_rate": Integration.error_rate,
+        "avg_processing_time": Integration.avg_processing_time,
+        "criticality": Integration.criticality,
+        "name": Integration.name,
+    }
+    sort_col = SORT_COLUMNS.get(sort_by, Integration.score)
+    order = sort_col.asc() if sort_dir == "asc" else sort_col.desc()
     items = (
-        query.order_by(Integration.score.desc(), Integration.name.asc())
+        query.order_by(order, Integration.name.asc())
         .offset(skip)
         .limit(limit)
         .all()
@@ -528,7 +689,166 @@ def sync_cpi_integrations(
     }
 
 
-def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, include_mpl: bool, message_limit: int) -> int:
+@app.post("/integrations/sync-po")
+def sync_po_integrations(
+    payload: SyncPORequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    decrypted_password = decrypt_secret(current_user.po_password_encrypted)
+    if not all([current_user.po_host, current_user.po_username, decrypted_password]):
+        raise HTTPException(
+            status_code=400,
+            detail="Configure as credenciais do SAP PO na página de configurações antes de sincronizar.",
+        )
+
+    connector = SAPPOConnector(
+        host=current_user.po_host,
+        username=current_user.po_username,
+        password=decrypted_password,
+    )
+
+    total_synced = _do_sync_po(
+        connector=connector,
+        db=db,
+        user=current_user,
+        reset=payload.reset,
+        days=payload.days,
+        message_limit=payload.message_limit,
+    )
+
+    return {
+        "message": "Sincronização SAP PO concluída",
+        "total_synced": total_synced,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+def _do_sync_po(
+    connector: SAPPOConnector,
+    db: Session,
+    user: User,
+    reset: bool,
+    days: int,
+    message_limit: int,
+    include_directory: bool = True,
+) -> int:
+    messages = connector.get_runtime_messages(days=days, limit=message_limit)
+    metrics_by_integration = connector.aggregate_metrics(messages)
+    directory_integrations = connector.get_directory_integrations() if include_directory else []
+
+    seen_external_ids: set = set()
+    total_synced = 0
+
+    for key, metrics in metrics_by_integration.items():
+        external_id = key
+        seen_external_ids.add(external_id)
+        existing = (
+            db.query(Integration)
+            .filter(
+                Integration.user_id == user.id,
+                Integration.external_id == external_id,
+                Integration.external_source == "SAP_PO",
+            )
+            .first()
+        )
+
+        score, criticality = compute_score_and_criticality(
+            metrics["total_messages"],
+            metrics["error_rate"],
+            existing.business_weight if existing else 5,
+        )
+
+        integration_data = {
+            "user_id": user.id,
+            "name": metrics.get("name") or external_id,
+            "platform": "SAP PO",
+            "source_system": metrics.get("sender") or "SAP PO",
+            "target_system": metrics.get("receiver") or "Unknown",
+            "monthly_volume": metrics["total_messages"],
+            "error_count": metrics["failed"],
+            "error_rate": round(metrics["error_rate"], 4),
+            "avg_processing_time": round(metrics["avg_time"], 2),
+            "business_weight": existing.business_weight if existing else 5,
+            "score": score,
+            "criticality": criticality,
+            "external_id": external_id,
+            "external_source": "SAP_PO",
+            "last_synced": datetime.utcnow(),
+        }
+
+        if existing:
+            for k, v in integration_data.items():
+                setattr(existing, k, v)
+        else:
+            db.add(Integration(**integration_data))
+
+        total_synced += 1
+
+    for entry in directory_integrations:
+        external_id = entry.get("integration_key")
+        if not external_id:
+            continue
+        seen_external_ids.add(external_id)
+        if external_id in metrics_by_integration:
+            continue
+
+        existing = (
+            db.query(Integration)
+            .filter(
+                Integration.user_id == user.id,
+                Integration.external_id == external_id,
+                Integration.external_source == "SAP_PO",
+            )
+            .first()
+        )
+
+        integration_data = {
+            "user_id": user.id,
+            "name": entry.get("name") or external_id,
+            "platform": "SAP PO",
+            "source_system": entry.get("sender") or "SAP PO",
+            "target_system": entry.get("receiver") or "Unknown",
+            "monthly_volume": existing.monthly_volume if existing else 0,
+            "error_count": existing.error_count if existing else 0,
+            "error_rate": existing.error_rate if existing else 0.0,
+            "avg_processing_time": existing.avg_processing_time if existing else 0.0,
+            "business_weight": existing.business_weight if existing else 5,
+            "score": existing.score if existing else 50.0,
+            "criticality": existing.criticality if existing else "Média",
+            "external_id": external_id,
+            "external_source": "SAP_PO",
+            "last_synced": datetime.utcnow(),
+        }
+
+        if existing:
+            for k, v in integration_data.items():
+                setattr(existing, k, v)
+        else:
+            db.add(Integration(**integration_data))
+
+        total_synced += 1
+
+    if reset and include_directory:
+        db.query(Integration).filter(
+            Integration.user_id == user.id,
+            Integration.external_source == "SAP_PO",
+            ~Integration.external_id.in_(seen_external_ids),
+        ).delete(synchronize_session=False)
+
+    db.commit()
+    return total_synced
+
+
+def _do_sync(
+    connector: CPIConnector,
+    db: Session,
+    user: User,
+    reset: bool,
+    include_mpl: bool,
+    message_limit: int,
+    include_artifacts: bool = True,
+) -> int:
     """
     Sync strategy: MPL-primary.
 
@@ -545,15 +865,17 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
     seen_canonical: set = set()
     canonical_metrics: Dict[str, Dict] = {}
     for key, m in bulk_metrics.items():
+        artifact_id = m.get("artifact_id")
         flow_name = m.get("integration_flow_name") or key
         artifact_name = m.get("artifact_name") or key
         # canonical key = artifact_id (first non-null from message)
-        canonical = flow_name  # flow_name == artifact_id in CPI MPL
+        canonical = artifact_id or flow_name or artifact_name
         if canonical not in seen_canonical:
             seen_canonical.add(canonical)
             canonical_metrics[canonical] = m
 
     total_synced = 0
+    processed_external_ids: set = set()
     seen_external_ids: set = set()
 
     # ── PASS 1: integrations with real MPL data ──────────────────────────────
@@ -561,12 +883,13 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
         if not metrics.get("has_data"):
             continue
 
-        seen_external_ids.add(canonical_id)
+        external_id = metrics.get("artifact_id") or canonical_id
+        seen_external_ids.add(external_id)
         existing = (
             db.query(Integration)
             .filter(
                 Integration.user_id == user.id,
-                Integration.external_id == canonical_id,
+                Integration.external_id == external_id,
                 Integration.external_source == "CPI",
             )
             .first()
@@ -595,8 +918,12 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
             "business_weight": existing.business_weight if existing else 5,
             "score": score,
             "criticality": criticality,
-            "external_id": canonical_id,
+            "external_id": external_id,
             "external_source": "CPI",
+            "cpi_sender": metrics.get("sender"),
+            "cpi_receiver": metrics.get("receiver"),
+            "cpi_integration_flow_name": metrics.get("integration_flow_name"),
+            "cpi_artifact_name": metrics.get("artifact_name"),
         }
 
         if existing:
@@ -608,53 +935,83 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
             db.add(Integration(**integration_data))
 
         total_synced += 1
+        processed_external_ids.add(external_id)
 
     db.commit()
 
     # ── PASS 2: Participant API artifacts without MPL data (idle/new flows) ───
-    try:
-        artifacts = connector.get_integration_artifacts()
-    except Exception as e:
-        logger.warning(f"Could not fetch Participant API artifacts: {e}")
-        artifacts = []
+    artifacts = []
+    if include_artifacts:
+        try:
+            artifacts = connector.get_integration_artifacts()
+        except Exception as e:
+            logger.warning(f"Could not fetch Participant API artifacts: {e}")
+            artifacts = []
 
     for artifact in artifacts:
         artifact_id = artifact.get("id")
         if not artifact_id:
             continue
 
-        # Try to match with already-synced MPL data via all possible keys
+        # Canonical key = symbolicName (matches what MPL returns as artifact_id in PASS 1).
+        # UUID is NOT used as external_id so both passes stay consistent.
+        canonical_key = artifact.get("symbolicName") or artifact.get("name") or artifact_id
+
+        # Try to match MPL bulk metrics via all possible identifiers
         metrics = (
-            bulk_metrics.get(artifact_id)
-            or bulk_metrics.get(artifact.get("symbolicName"))
+            bulk_metrics.get(canonical_key)
+            or bulk_metrics.get(artifact_id)
             or bulk_metrics.get(artifact.get("name"))
             or {}
         )
 
-        if metrics.get("has_data"):
-            # Already handled in pass 1 (the canonical_id might differ slightly)
-            canonical_id = metrics.get("integration_flow_name") or artifact_id
-            seen_external_ids.add(canonical_id)
-            seen_external_ids.add(artifact_id)
-            continue
-
-        # Targeted fallback removed — bulk MPL (30 days) already covers all active flows.
-        # Individual per-artifact queries cause 700+ HTTP calls and timeout the sync endpoint.
-
+        # Protect the canonical key AND any legacy UUID entry from the reset pruning
+        seen_external_ids.add(canonical_key)
         seen_external_ids.add(artifact_id)
+
+        # Primary lookup by canonical key (symbolic name)
         existing = (
             db.query(Integration)
             .filter(
                 Integration.user_id == user.id,
-                Integration.external_id == artifact_id,
+                Integration.external_id == canonical_key,
                 Integration.external_source == "CPI",
             )
             .first()
         )
 
-        endpoints = connector.get_integration_endpoints(artifact_id) if metrics.get("has_data") else []
+        # Migration fallback: entry may still carry a UUID external_id from older syncs
+        if existing is None:
+            existing = (
+                db.query(Integration)
+                .filter(
+                    Integration.user_id == user.id,
+                    Integration.external_id == artifact_id,
+                    Integration.external_source == "CPI",
+                )
+                .first()
+            )
+            if existing:
+                # Normalise to symbolic key so future syncs always find it here in PASS 2
+                existing.external_id = canonical_key
+
+        # Only fetch endpoints for NEW artifacts — avoids N HTTP calls for existing ones
+        if existing is None:
+            endpoints = connector.get_integration_endpoints(artifact_id)
+        else:
+            endpoints = []
+
         integration_data = convert_cpi_to_integration(artifact, endpoints)
         integration_data["user_id"] = user.id
+        integration_data["external_id"] = canonical_key
+
+        # Preserve stored endpoint data when we skipped fetching
+        if existing and not endpoints:
+            integration_data["cpi_endpoint_count"] = existing.cpi_endpoint_count or 0
+            integration_data["cpi_endpoint_urls"] = existing.cpi_endpoint_urls
+
+        if existing and existing.business_weight:
+            integration_data["business_weight"] = existing.business_weight
 
         if existing and existing.target_system and integration_data["target_system"] == "Unknown":
             integration_data["target_system"] = existing.target_system
@@ -677,6 +1034,10 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
                     "avg_processing_time": round(metrics["avg_time"], 2),
                     "score": score,
                     "criticality": criticality,
+                    "cpi_sender": metrics.get("sender"),
+                    "cpi_receiver": metrics.get("receiver"),
+                    "cpi_integration_flow_name": metrics.get("integration_flow_name"),
+                    "cpi_artifact_name": metrics.get("artifact_name") or artifact.get("name"),
                 }
             )
         elif existing:
@@ -688,6 +1049,10 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
                     "avg_processing_time": existing.avg_processing_time,
                     "score": existing.score,
                     "criticality": existing.criticality,
+                    "cpi_sender": existing.cpi_sender,
+                    "cpi_receiver": existing.cpi_receiver,
+                    "cpi_integration_flow_name": existing.cpi_integration_flow_name,
+                    "cpi_artifact_name": existing.cpi_artifact_name or artifact.get("name"),
                 }
             )
 
@@ -699,9 +1064,12 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
             integration_data["last_synced"] = datetime.utcnow()
             db.add(Integration(**integration_data))
 
-        total_synced += 1
 
-    if reset:
+        if canonical_key not in processed_external_ids:
+            total_synced += 1
+            processed_external_ids.add(canonical_key)
+
+    if reset and include_artifacts:
         db.query(Integration).filter(
             Integration.user_id == user.id,
             Integration.external_source == "CPI",
