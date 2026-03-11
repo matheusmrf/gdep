@@ -25,6 +25,7 @@ def calculate_metrics(messages: List[Dict]) -> Dict:
             "error_rate": 0.0,
             "avg_time": 0.0,
             "has_data": False,
+            "artifact_id": None,
             "sender": None,
             "receiver": None,
             "artifact_name": None,
@@ -54,6 +55,7 @@ def calculate_metrics(messages: List[Dict]) -> Dict:
         "error_rate": failed / total_messages if total_messages else 0.0,
         "avg_time": avg_time,
         "has_data": True,
+        "artifact_id": most_common(m.get("artifact_id") for m in messages),
         "sender": most_common(m.get("sender") for m in messages),
         "receiver": most_common(m.get("receiver") for m in messages),
         "artifact_name": most_common(m.get("artifact_name") for m in messages),
@@ -438,6 +440,12 @@ def convert_cpi_to_integration(
         if descriptor not in unique_descriptors:
             unique_descriptors.append(descriptor)
 
+    endpoint_urls = []
+    for endpoint in endpoints:
+        endpoint_url = endpoint.get("url")
+        if endpoint_url and endpoint_url not in endpoint_urls:
+            endpoint_urls.append(endpoint_url)
+
     return {
         "name": artifact.get("name", artifact.get("symbolicName", "Unknown")),
         "platform": "CPI",
@@ -452,4 +460,15 @@ def convert_cpi_to_integration(
         "criticality": "Média",
         "external_id": artifact.get("id"),
         "external_source": "CPI",
+        "cpi_symbolic_name": artifact.get("symbolicName"),
+        "cpi_artifact_type": artifact.get("type"),
+        "cpi_version": artifact.get("version"),
+        "cpi_state": artifact.get("state"),
+        "cpi_deployed": 1 if artifact.get("deployed") else 0,
+        "cpi_endpoint_count": len(endpoint_urls),
+        "cpi_endpoint_urls": ", ".join(endpoint_urls) if endpoint_urls else None,
+        "cpi_sender": None,
+        "cpi_receiver": None,
+        "cpi_integration_flow_name": None,
+        "cpi_artifact_name": artifact.get("name"),
     }

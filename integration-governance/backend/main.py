@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.collector import calculate_score, classify
 from backend.cpi_connector import CPIConnector, convert_cpi_to_integration
-from backend.po_connector import SAPPOConnector
+from backend.po_connector import SAPPOConnector, normalize_po_host
 from backend.database import Base, SessionLocal, engine, sync_schema
 from backend.models import AlertSettings, CPIEnvironment, Favorite, Integration, SyncSchedule, User, UserSession
 from backend.schemas import (
@@ -67,8 +67,15 @@ scheduler = BackgroundScheduler()
 logger = logging.getLogger(__name__)
 
 
-def _run_auto_sync_for_user(user_id: int):
-    """Called by APScheduler: syncs CPI for a user and sends email alerts if configured."""
+def _update_schedule_last_run(db: Session, user_id: int):
+    schedule = db.query(SyncSchedule).filter(SyncSchedule.user_id == user_id).first()
+    if schedule:
+        schedule.last_run = datetime.utcnow()
+        db.commit()
+
+
+def _run_daily_structure_sync_for_user(user_id: int):
+    """Daily sync: full inventory + metrics refresh for CPI and SAP PO."""
     db = SessionLocal()
     try:
         user = db.query(User).filter(User.id == user_id).first()
@@ -83,7 +90,15 @@ def _run_auto_sync_for_user(user_id: int):
                 tenant_id=user.cpi_tenant_id,
             )
             if cpi_connector.health_check():
-                _do_sync(cpi_connector, db, user, reset=False, include_mpl=True, message_limit=100)
+                _do_sync(
+                    cpi_connector,
+                    db,
+                    user,
+                    reset=False,
+                    include_mpl=True,
+                    message_limit=100,
+                    include_artifacts=True,
+                )
 
         po_decrypted = decrypt_secret(user.po_password_encrypted)
         if all([user.po_host, user.po_username, po_decrypted]):
@@ -92,12 +107,68 @@ def _run_auto_sync_for_user(user_id: int):
                 username=user.po_username,
                 password=po_decrypted,
             )
-            _do_sync_po(po_connector, db, user, reset=False, days=1, message_limit=5000)
+            _do_sync_po(
+                po_connector,
+                db,
+                user,
+                reset=False,
+                days=1,
+                message_limit=5000,
+                include_directory=True,
+            )
 
-        schedule = db.query(SyncSchedule).filter(SyncSchedule.user_id == user_id).first()
-        if schedule:
-            schedule.last_run = datetime.utcnow()
-            db.commit()
+        _update_schedule_last_run(db, user_id)
+    except Exception:
+        pass
+    finally:
+        db.close()
+
+
+def _run_metrics_sync_for_user(user_id: int):
+    """Every 5 minutes: refresh only runtime metrics for CPI and SAP PO."""
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            return
+
+        cpi_decrypted = decrypt_secret(user.cpi_password_encrypted)
+        if all([user.cpi_host, user.cpi_username, cpi_decrypted, user.cpi_tenant_id]):
+            cpi_connector = CPIConnector(
+                host=user.cpi_host,
+                username=user.cpi_username,
+                password=cpi_decrypted,
+                tenant_id=user.cpi_tenant_id,
+            )
+            if cpi_connector.health_check():
+                _do_sync(
+                    cpi_connector,
+                    db,
+                    user,
+                    reset=False,
+                    include_mpl=True,
+                    message_limit=100,
+                    include_artifacts=False,
+                )
+
+        po_decrypted = decrypt_secret(user.po_password_encrypted)
+        if all([user.po_host, user.po_username, po_decrypted]):
+            po_connector = SAPPOConnector(
+                host=user.po_host,
+                username=user.po_username,
+                password=po_decrypted,
+            )
+            _do_sync_po(
+                po_connector,
+                db,
+                user,
+                reset=False,
+                days=1,
+                message_limit=5000,
+                include_directory=False,
+            )
+
+        _update_schedule_last_run(db, user_id)
     except Exception:
         pass
     finally:
@@ -105,7 +176,12 @@ def _run_auto_sync_for_user(user_id: int):
 
 
 def _reload_scheduler():
-    """Rebuild scheduler jobs from DB."""
+    """Rebuild scheduler jobs from DB.
+
+    For each enabled user:
+    - Daily full sync at configured hour
+    - Metrics-only sync every 5 minutes
+    """
     for job in scheduler.get_jobs():
         job.remove()
     db = SessionLocal()
@@ -113,12 +189,20 @@ def _reload_scheduler():
         schedules = db.query(SyncSchedule).filter(SyncSchedule.enabled == 1).all()
         for s in schedules:
             scheduler.add_job(
-                _run_auto_sync_for_user,
+                _run_daily_structure_sync_for_user,
                 "cron",
                 hour=s.hour,
                 minute=0,
                 args=[s.user_id],
-                id=f"sync_user_{s.user_id}",
+                id=f"sync_daily_user_{s.user_id}",
+                replace_existing=True,
+            )
+            scheduler.add_job(
+                _run_metrics_sync_for_user,
+                "interval",
+                minutes=5,
+                args=[s.user_id],
+                id=f"sync_metrics_user_{s.user_id}",
                 replace_existing=True,
             )
     finally:
@@ -419,7 +503,7 @@ def update_po_settings(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    current_user.po_host = payload.po_host.strip()
+    current_user.po_host = normalize_po_host(payload.po_host)
     current_user.po_username = payload.po_username.strip()
     current_user.po_password_encrypted = encrypt_secret(payload.po_password)
     current_user.po_settings_updated_at = datetime.utcnow()
@@ -647,10 +731,11 @@ def _do_sync_po(
     reset: bool,
     days: int,
     message_limit: int,
+    include_directory: bool = True,
 ) -> int:
     messages = connector.get_runtime_messages(days=days, limit=message_limit)
     metrics_by_integration = connector.aggregate_metrics(messages)
-    directory_integrations = connector.get_directory_integrations()
+    directory_integrations = connector.get_directory_integrations() if include_directory else []
 
     seen_external_ids: set = set()
     total_synced = 0
@@ -744,7 +829,7 @@ def _do_sync_po(
 
         total_synced += 1
 
-    if reset:
+    if reset and include_directory:
         db.query(Integration).filter(
             Integration.user_id == user.id,
             Integration.external_source == "SAP_PO",
@@ -755,7 +840,15 @@ def _do_sync_po(
     return total_synced
 
 
-def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, include_mpl: bool, message_limit: int) -> int:
+def _do_sync(
+    connector: CPIConnector,
+    db: Session,
+    user: User,
+    reset: bool,
+    include_mpl: bool,
+    message_limit: int,
+    include_artifacts: bool = True,
+) -> int:
     """
     Sync strategy: MPL-primary.
 
@@ -847,11 +940,13 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
     db.commit()
 
     # ── PASS 2: Participant API artifacts without MPL data (idle/new flows) ───
-    try:
-        artifacts = connector.get_integration_artifacts()
-    except Exception as e:
-        logger.warning(f"Could not fetch Participant API artifacts: {e}")
-        artifacts = []
+    artifacts = []
+    if include_artifacts:
+        try:
+            artifacts = connector.get_integration_artifacts()
+        except Exception as e:
+            logger.warning(f"Could not fetch Participant API artifacts: {e}")
+            artifacts = []
 
     for artifact in artifacts:
         artifact_id = artifact.get("id")
@@ -974,7 +1069,7 @@ def _do_sync(connector: CPIConnector, db: Session, user: User, reset: bool, incl
             total_synced += 1
             processed_external_ids.add(canonical_key)
 
-    if reset:
+    if reset and include_artifacts:
         db.query(Integration).filter(
             Integration.user_id == user.id,
             Integration.external_source == "CPI",

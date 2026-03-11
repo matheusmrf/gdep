@@ -22,12 +22,21 @@ logger = logging.getLogger(__name__)
 SUCCESS_STATUSES = {"SUCCESS"}
 ERROR_STATUSES = {"ERROR", "FAILED", "SYSTEM_ERROR", "CANCELLED"}
 
+LEGACY_PO_HOSTS = {
+    "xq3abpas.arcelormittal.com.br:50000",
+    "xq3abpas.arcelormittal.com.br",
+}
+DEFAULT_PO_HOST = "https://integrationqas.arcelormittal.com.br"
 
-def _normalize_host(host: str) -> str:
+
+def normalize_po_host(host: str) -> str:
     host = (host or "").strip()
+    host_no_scheme = host.replace("https://", "").replace("http://", "").rstrip("/")
+    if host_no_scheme in LEGACY_PO_HOSTS:
+        return DEFAULT_PO_HOST
     if host.startswith("http://") or host.startswith("https://"):
         return host.rstrip("/")
-    return f"http://{host.rstrip('/')}"
+    return f"https://{host.rstrip('/')}"
 
 
 def _safe_int(value: Optional[str], default: int = 0) -> int:
@@ -73,7 +82,7 @@ class SAPPOConnector:
         verify_ssl: bool = False,
         timeout: int = 30,
     ):
-        self.base_url = _normalize_host(host)
+        self.base_url = normalize_po_host(host)
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl

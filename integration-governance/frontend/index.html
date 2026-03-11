@@ -1042,7 +1042,7 @@
                             </label>
                             <h3 style="margin:10px 0 10px;">SAP PO</h3>
                             <label>Host do SAP PO
-                                <input type="text" id="settingsPoHost" placeholder="http://xq3abpas.arcelormittal.com.br:50000" />
+                                <input type="text" id="settingsPoHost" placeholder="https://integrationqas.arcelormittal.com.br" />
                             </label>
                             <label>Usuário do SAP PO
                                 <input type="text" id="settingsPoUsername" />
@@ -1089,10 +1089,10 @@
 
                     <!-- Sincronização automática -->
                     <div id="settingsTab-schedule" class="hidden">
-                        <p class="subtle">Sincronize o CPI automaticamente todos os dias no horário configurado (UTC).</p>
+                        <p class="subtle">Aplica para CPI e SAP PO: sincronização estrutural 1x por dia no horário configurado (UTC) + métricas a cada 5 minutos.</p>
                         <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
                             <input type="checkbox" id="scheduleEnabled" style="width:18px;height:18px;border-radius:4px;" />
-                            Habilitar sincronização automática diária
+                            Habilitar sincronização automática (diária + 5 min)
                         </label>
                         <label>Hora (UTC, 0–23)
                             <input type="number" id="scheduleHour" min="0" max="23" value="6" style="max-width:100px;" />
@@ -1509,7 +1509,7 @@
                 document.getElementById("settingsTenantId").value = cpiSettings.cpi_tenant_id || "";
                 document.getElementById("settingsPassword").value = "";
 
-                document.getElementById("settingsPoHost").value = poSettings.po_host || "";
+                document.getElementById("settingsPoHost").value = poSettings.po_host || "https://integrationqas.arcelormittal.com.br";
                 document.getElementById("settingsPoUsername").value = poSettings.po_username || "";
                 document.getElementById("settingsPoPassword").value = "";
 
