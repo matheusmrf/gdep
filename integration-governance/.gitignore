@@ -97,3 +97,8 @@ MessageProcessingLogs.txt
 # Build artifacts
 dist/
 build/
+
+# Documentation: keep only README visible
+*.md
+!README.md
+!**/README.md

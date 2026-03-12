@@ -7,3 +7,8 @@ venv/
 .env
 integration-governance.db
 *.db
+
+# Documentation: keep only README visible
+*.md
+!README.md
+!**/README.md
